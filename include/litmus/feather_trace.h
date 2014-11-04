@@ -38,10 +38,22 @@ static inline void ft_atomic_dec(int *val)
 /* provide default implementation */
 #include <linux/timex.h> /* for get_cycles() */
 
+#if defined(CONFIG_CPU_V7) && !defined(CONFIG_HW_PERF_EVENTS)	
+
+#include <litmus/clock.h> /* for litmus_get_cycles() */
+static inline unsigned long long ft_timestamp(void)
+{
+	return (unsigned long long)litmus_get_cycles();
+}
+
+#else
+
 static inline unsigned long long ft_timestamp(void)
 {
 	return get_cycles();
 }
+
+#endif
 
 #define feather_callback
 

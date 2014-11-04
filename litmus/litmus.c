@@ -20,6 +20,9 @@
 #include <litmus/rt_domain.h>
 #include <litmus/litmus_proc.h>
 #include <litmus/sched_trace.h>
+#include <litmus/clock.h>
+
+#include <asm/cacheflush.h>
 
 #ifdef CONFIG_SCHED_CPU_AFFINITY
 #include <litmus/affinity.h>
@@ -303,9 +306,11 @@ asmlinkage long sys_null_call(cycles_t __user *ts)
 	cycles_t now;
 
 	if (ts) {
-		now = get_cycles();
+		now = litmus_get_cycles();
 		ret = put_user(now, ts);
 	}
+	else
+		flush_cache_all();
 
 	return ret;
 }
@@ -599,6 +604,48 @@ static struct notifier_block shutdown_notifier = {
 	.notifier_call = litmus_shutdown_nb,
 };
 
+#if defined(CONFIG_CPU_V7) && !defined(CONFIG_HW_PERF_EVENTS)
+static void __init litmus_enable_perfcounters_v7(void *_ignore)
+{
+	u32 enable_val = 0;
+
+	/* disable performance monitoring */
+	asm volatile("mcr p15, 0, %0, c9, c12, 0" : : "r" (0x00000006));
+
+	/* disable all events */
+	asm volatile("mcr p15, 0, %0, c9, c12, 2" : : "r" (0xffffffff));
+
+	/* write 1 to enable user-mode access to the performance counter */
+	asm volatile("mcr p15, 0, %0, c9, c14, 0" : : "r" (1));
+
+	/* disable counter overflow interrupts (just in case) */
+	asm volatile("mcr p15, 0, %0, c9, c14, 2" : : "r" (0x8000000f));
+
+	/* select event zero */
+	asm volatile("mcr p15, 0, %0, c9, c12, 5" : : "r" (0));
+
+	/* count cycles in the selected event zero */
+	asm volatile("mcr p15, 0, %0, c9, c13, 1" : : "r" (0x00000011));
+
+	enable_val |= 1;	/* bit 1 enables the counters */
+	enable_val |= 2;	/* resets event counters to zero */
+	enable_val |= 4;	/* resets cycle counter to zero */
+	//enable_val |= 8;	/* enable "by 64" divider for CCNT. */
+	
+	/* performance monitor control register: enable all counters */
+	asm volatile("mcr p15, 0, %0, c9, c12, 0" : : "r"(enable_val));
+
+	/* enables counters (cycle counter and event 1) */
+        asm volatile("mcr p15, 0, %0, c9, c12, 1" : : "r"(0x80000001));
+}
+
+static void __init litmus_enable_perfcounters(void)
+{
+	litmus_enable_perfcounters_v7(NULL);
+	smp_call_function(litmus_enable_perfcounters_v7, NULL, 0);
+}
+#endif
+
 static int __init _init_litmus(void)
 {
 	/*      Common initializers,
@@ -628,6 +675,10 @@ static int __init _init_litmus(void)
 
 	register_reboot_notifier(&shutdown_notifier);
 
+#if defined(CONFIG_CPU_V7) && !defined(CONFIG_HW_PERF_EVENTS)	
+	litmus_enable_perfcounters();
+#endif
+	
 	return 0;
 }
 
