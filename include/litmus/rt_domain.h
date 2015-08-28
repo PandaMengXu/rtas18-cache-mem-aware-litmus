@@ -84,7 +84,10 @@ void __add_release(rt_domain_t* rt, struct task_struct *task);
 
 static inline struct task_struct* __take_ready(rt_domain_t* rt)
 {
-	struct bheap_node* hn = bheap_take(rt->order, &rt->ready_queue);
+	struct bheap_node* hn = NULL;
+
+    BUG_ON(!rt);
+	hn = bheap_take(rt->order, &rt->ready_queue);
 	if (hn)
 		return bheap2task(hn);
 	else
