@@ -34,9 +34,9 @@
 
 #include <linux/module.h>
 
-/* Overview of GSN-EDF operations.
+/* Overview of GSN-FP operations.
  *
- * For a detailed explanation of GSN-EDF have a look at the FMLP paper. This
+ * For a detailed explanation of GSN-FP have a look at the FMLP paper. This
  * description only covers how the individual operations are implemented in
  * LITMUS.
  *
@@ -941,7 +941,7 @@ static long gsnfp_allocate_lock(struct litmus_lock **lock, int type,
 {
 	int err = -ENXIO;
 
-	/* GSN-EDF currently only supports the FMLP for global resources. */
+	/* GSN-FP currently only supports the FMLP for global resources. */
 	switch (type) {
 
 	case FMLP_SEM:
@@ -1017,11 +1017,11 @@ static long gsnfp_activate_plugin(void)
 #ifdef CONFIG_RELEASE_MASTER
 		if (cpu != gsnfp.release_master) {
 #endif
-			TRACE("GSN-EDF: Initializing CPU #%d.\n", cpu);
+			TRACE("GSN-FP: Initializing CPU #%d.\n", cpu);
 			update_cpu_position(entry);
 #ifdef CONFIG_RELEASE_MASTER
 		} else {
-			TRACE("GSN-EDF: CPU %d is release master.\n", cpu);
+			TRACE("GSN-FP: CPU %d is release master.\n", cpu);
 		}
 #endif
 	}
