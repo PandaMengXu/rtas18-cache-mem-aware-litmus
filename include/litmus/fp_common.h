@@ -102,4 +102,5 @@ static inline struct task_struct* fp_prio_take(struct fp_prio_queue* q)
 int fp_preemption_needed(struct fp_prio_queue*  q, struct task_struct *t);
 
 int gfp_preemption_needed(rt_domain_t* rt, struct task_struct *t);
+int gnpfp_preemption_needed(rt_domain_t* rt, struct task_struct *t);
 #endif
