@@ -164,6 +164,29 @@ int gnpfp_preemption_needed(rt_domain_t* rt, struct task_struct *t)
         return 0;
 }
 
+/* need_to_preempt - check whether the task t needs to be preempted
+ *                   call only with irqs disabled and with  ready_lock acquired
+ *                   THIS DOES NOT TAKE NON-PREEMPTIVE SECTIONS INTO ACCOUNT!
+ * MX: copy from gfp_preemption_needed
+ */
+int gfpca_preemption_needed(rt_domain_t* rt, struct task_struct *t)
+{
+	/* we need the read lock for fp_ready_queue */
+	/* no need to preempt if there is nothing pending */
+	if (!__jobs_pending(rt))
+		return 0;
+	/* we need to reschedule if t doesn't exist */
+	if (!t)
+		return 1;
+
+	/* NOTE: We cannot check for non-preemptibility since we
+	 *       don't know what address space we're currently in.
+	 */
+
+	/* make sure to get non-rt stuff out of the way */
+	return !is_realtime(t) || fp_higher_prio(__next_ready(rt), t);
+}
+
 void fp_prio_queue_init(struct fp_prio_queue* q)
 {
 	int i;

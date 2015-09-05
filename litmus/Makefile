@@ -23,6 +23,7 @@ obj-y     = sched_plugin.o litmus.o \
 	    sched_psn_edf.o \
 	    sched_gsn_fp.o \
 	    sched_gsn_npfp.o \
+	    sched_gsn_fpca.o \
 	    sched_pfp.o
 
 obj-$(CONFIG_PLUGIN_CEDF) += sched_cedf.o
