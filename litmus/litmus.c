@@ -159,6 +159,8 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 		       pid, tp.budget_policy);
 		goto out_unlock;
 	}
+	if (tp.num_cache_partitions < 0)
+		goto out_unlock;
 
 	target->rt_param.task_params = tp;
 

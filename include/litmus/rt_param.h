@@ -63,6 +63,11 @@ typedef enum {
 #define LITMUS_HIGHEST_PRIORITY   1
 #define LITMUS_LOWEST_PRIORITY    (LITMUS_MAX_PRIORITY - 1)
 
+/* MX: We onlly use way partition, so we have at most 16 way partitions on
+ * Freescale IMX6
+ */
+#define MAX_CACHE_PARTITIONS	16
+
 /* Provide generic comparison macros for userspace,
  * in case that we change this later. */
 #define litmus_higher_fixed_prio(a, b)	(a < b)
@@ -76,6 +81,7 @@ struct rt_task {
 	lt_t 		period;
 	lt_t		relative_deadline;
 	lt_t		phase;
+	unsigned int	num_cache_partitions;
 	unsigned int	cpu;
 	unsigned int	priority;
 	task_class_t	cls;
@@ -153,6 +159,11 @@ struct rt_job {
 	 * be negative (when job finishes before its deadline).
 	 */
 	long long	lateness;
+
+	/* Which cache partitions this job is using
+	 * PL310 only has 16 way partitions.
+	 */
+	uint64_t	cache_partitions;
 
 	/* Which job is this. This is used to let user space
 	 * specify which job to wait for, which is important if jobs
