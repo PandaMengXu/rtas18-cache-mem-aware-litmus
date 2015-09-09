@@ -164,28 +164,83 @@ int gnpfp_preemption_needed(rt_domain_t* rt, struct task_struct *t)
         return 0;
 }
 
+int count_set_bits(uint32_t bitmask)
+{
+	int i = 0;
+	int num_bits = 0;
+	for (i = 0; i < MAX_NUM_CACHE_PARTITIONS; i++)
+	{
+		if (bitmask & (1 << i))
+			num_bits++;
+	}
+	return num_bits;
+}
+
+
 /* need_to_preempt - check whether the task t needs to be preempted
  *                   call only with irqs disabled and with  ready_lock acquired
  *                   THIS DOES NOT TAKE NON-PREEMPTIVE SECTIONS INTO ACCOUNT!
  * MX: copy from gfp_preemption_needed
  */
-int gfpca_preemption_needed(rt_domain_t* rt, struct task_struct *t)
-{
-	/* we need the read lock for fp_ready_queue */
-	/* no need to preempt if there is nothing pending */
-	if (!__jobs_pending(rt))
-		return 0;
-	/* we need to reschedule if t doesn't exist */
-	if (!t)
-		return 1;
 
-	/* NOTE: We cannot check for non-preemptibility since we
-	 *       don't know what address space we're currently in.
-	 */
-
-	/* make sure to get non-rt stuff out of the way */
-	return !is_realtime(t) || fp_higher_prio(__next_ready(rt), t);
-}
+//int gfpca_preemption_needed(rt_domain_t* rt, struct task_struct *t)
+//{
+//	/* we need the read lock for fp_ready_queue */
+//	int high_priority = 0;
+//	int enough_cache = 0;
+//	int used_cache_partitions = 0;
+//	struct task_struct *next = NULL;
+//	/* no need to preempt if there is nothing pending */
+//	if (!__jobs_pending(rt))
+//		return 0;
+//	/* we need to reschedule if t doesn't exist */
+//	if (!t)
+//		return 1;
+//
+//	/* NOTE: We cannot check for non-preemptibility since we
+//	 *       don't know what address space we're currently in.
+//	 */
+//
+//	/* make sure to get non-rt stuff out of the way */
+//	if (!is_realtime(t))
+//		return 1;
+//
+//	next = __next_ready(rt);
+//	if (fp_higher_prio(next, t))
+//		high_priority = 1;
+//
+//	/* Check if we have enough idle/can-preempt cache partitions */
+//	used_cache_partitions =
+//		count_set_bits(rt->used_cache_partitions & CACHE_PARTITIONS_MASK);
+//	if (MAX_NUM_CACHE_PARTITIONS - used_cache_partitions
+//		<= tsk_rt(t)->task_params.num_cache_partitions)
+//	{
+//		enough_cache = 1;
+//	} else
+//	{
+//		/* TODO: check how many cache partitions can be preempted */
+//		int cpu;
+//		int num_preempt_cp = 0;
+//		for (cpu = 0; cpu < NR_CPUS; cpu++)  {
+//			cpu_entry_t* entry = gsnfpca_cpus[cpu];
+//			struct task_struct* cur = entry->scheduled;
+//
+//			if (!is_realtime(cur))
+//				continue;
+//
+//			if (fp_higher_prio(next, cur))
+//				num_preempt_cp += tsk_rt(cur)->task_params.num_cache_partitions;
+//		}
+//		if (MAX_NUM_CACHE_PARTITIONS - used_cache_partitions + num_preempt_cp
+//			<= tsk_rt(t)->task_params.num_cache_partitions)
+//			enough_cache = 1;
+//		else
+//			enough_cache = 0;
+//	}
+//
+//	if (high_priority && enough_cache)
+//		return 1;
+//}
 
 void fp_prio_queue_init(struct fp_prio_queue* q)
 {

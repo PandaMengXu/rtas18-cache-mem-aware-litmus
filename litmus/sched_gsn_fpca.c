@@ -13,6 +13,7 @@
 #include <linux/percpu.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/list.h>
 
 #include <litmus/litmus.h>
 #include <litmus/jobs.h>
@@ -101,11 +102,14 @@
  * __take_ready).
  */
 
-
+#define SCHED_INIT					0 /* init of cpu_entry_t.flag */
+#define SCHED_FORCE_SCHED_OUT		1 /* sched the current task out of the cpu */
 /* cpu_entry_t - maintain the linked and scheduled state
  */
 typedef struct  {
 	int 			cpu;
+	int				flag;			/* flag to help schedule */
+	struct task_struct*	preempting; /* only RT tasks, RT task that preempt a RT task on a core */
 	struct task_struct*	linked;		/* only RT tasks */
 	struct task_struct*	scheduled;	/* only RT tasks */
 	struct bheap_node*	hn;
@@ -121,6 +125,8 @@ static struct bheap      gsnfpca_cpu_heap;
 static rt_domain_t gsnfpca;
 #define gsnfpca_lock (gsnfpca.ready_lock)
 
+static struct task_struct standby_tasks;
+static cpu_entry_t* standby_cpus[NR_CPUS];
 
 /* Uncomment this if you want to see all scheduling decisions in the
  * TRACE() log.
@@ -156,6 +162,16 @@ static cpu_entry_t* lowest_prio_cpu(void)
 	return hn->value;
 }
 
+static void remove_cpu(cpu_entry_t *entry)
+{
+	if (likely(bheap_node_in_heap(entry->hn)))
+		bheap_delete(cpu_lower_prio, &gsnfpca_cpu_heap, entry->hn);
+}
+
+static void insert_cpu(cpu_entry_t *entry)
+{
+	bheap_insert(cpu_lower_prio, &gsnfpca_cpu_heap, entry->hn);
+}
 
 /* link_task_to_cpu - Update the link of a CPU.
  *                    Handles the case where the to-be-linked task is already
@@ -279,61 +295,288 @@ static cpu_entry_t* gsnfpca_get_nearest_available_cpu(cpu_entry_t *start)
 }
 #endif
 
-/* check for any necessary preemptions */
+/* check for any necessary preemptions under gFPca */
 static void check_for_preemptions(void)
 {
+	rt_domain_t *rt = &gsnfpca;
 	struct task_struct *task;
-	cpu_entry_t *last;
+	int num_used_cache_partitions = 0;
+	int cpu_ok = 0;
+	int cache_ok = 0;
+	int only_take_idle_cache = 0;
+	uint32_t cp_mask_to_use = 0; /* mask of cache partitions the task to use */
+	int num_cp_to_use = 0;
+	struct task_struct preempted_tasks;
+	cpu_entry_t *cpu_to_preempt = NULL;
+	int i;
+	struct list_head *iter, *tmp;
 
+	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
-#ifdef CONFIG_PREFER_LOCAL_LINKING
-	cpu_entry_t *local;
+	/*TODO: Assume no priority inversion first! */
+	task = __peek_ready(&gsnfpca);
 
-	/* Before linking to other CPUs, check first whether the local CPU is
-	 * idle. */
-	local = &__get_cpu_var(gsnfpca_cpu_entries);
-    BUG_ON(!local);
-	task  = __peek_ready(&gsnfpca);
-
-	if (task && !local->linked
-#ifdef CONFIG_RELEASE_MASTER
-	    && likely(local->cpu != gsnfpca.release_master)
-#endif
-		) {
-		task = __take_ready(&gsnfpca);
-		TRACE_TASK(task, "linking to local CPU %d to avoid IPI\n", local->cpu);
-		link_task_to_cpu(task, local);
-		preempt(local);
+	if (!task) {
+		TRACE_TASK(task, "No ready RT tasks\n");
+		goto out;
 	}
-#endif
 
-	for (last = lowest_prio_cpu();
-	     gfpca_preemption_needed(&gsnfpca, last->linked);
-	     last = lowest_prio_cpu()) {
-		/* preemption necessary */
-		task = __take_ready(&gsnfpca);
-		TRACE("check_for_preemptions: attempting to link task %d to %d\n",
-		      task->pid, last->cpu);
+	/* Check if local cpu is idle first */
+	cpu_to_preempt = &__get_cpu_var(gsnfpca_cpu_entries);
+    BUG_ON(!cpu_to_preempt);
 
-#ifdef CONFIG_SCHED_CPU_AFFINITY
+	if (task && !cpu_to_preempt->linked) {
+		cpu_ok = 1;
+		cpu_to_preempt = cpu_to_preempt;
+		TRACE_TASK(task, "linking to local CPU %d to avoid IPI if cache is enough\n", cpu_to_preempt->cpu);
+	}
+
+	/* Check if cache and cpu is available */
+	num_used_cache_partitions =
+		count_set_bits(rt->used_cache_partitions & CACHE_PARTITIONS_MASK);
+	TRACE_TASK(task, "Attempt to preempt, num_used_cache_partitions=%d, used_cp_mask=0x%x, task.num_cp=%d\n",
+			   num_used_cache_partitions, rt->used_cache_partitions, tsk_rt(task)->task_params.num_cache_partitions);
+	if (MAX_NUM_CACHE_PARTITIONS - num_used_cache_partitions
+		>= tsk_rt(task)->task_params.num_cache_partitions)
+	{
+		cpu_entry_t* entry = NULL;
+		struct task_struct* cur = NULL;
+		/* Enough idle cache partitions */
+		cache_ok = 1;
+		only_take_idle_cache = 1;
+		cp_mask_to_use = 0;
+		for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
 		{
-			cpu_entry_t *affinity =
-					gsnfpca_get_nearest_available_cpu(
-						&per_cpu(gsnfpca_cpu_entries, task_cpu(task)));
-			if (affinity)
-				last = affinity;
-			else if (requeue_preempted_job(last->linked))
-				requeue(last->linked);
+			if (!(rt->used_cache_partitions & (1<<i)))
+			{
+				cp_mask_to_use |= (1<<i);
+				num_cp_to_use += 1;
+				if ( num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
+					break;
+			}
 		}
-#else
-		if (requeue_preempted_job(last->linked))
-			requeue(last->linked);
-#endif
+		/* Find the lowest priority CPU to preempt */
+		entry = lowest_prio_cpu();
+		cur = entry->scheduled;
 
-		link_task_to_cpu(task, last);
-		preempt(last);
+		if (!cur || !is_realtime(cur) || fp_higher_prio(task, cur))
+		{
+			if (!cpu_ok)
+			{
+				cpu_ok = 1;
+				cpu_to_preempt = entry;
+			}
+		}
+		TRACE_TASK(task, "Enough idle cache, cache_ok=%d, cpu_ok=%d, cp_mask_to_use=0x%x, cpu_to_preempt=%d\n",
+				   cache_ok, cpu_ok, cp_mask_to_use, cpu_to_preempt->cpu);
+	} else
+	{
+		int cpu = 0;
+
+		BUG_ON(num_cp_to_use);
+		/* take idle cache partitions first */
+		for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
+		{
+			if (!(rt->used_cache_partitions & (1<<i)))
+			{
+				cp_mask_to_use |= (1<<i);
+				num_cp_to_use++;
+			}
+		}
+
+		BUG_ON(num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions);
+		do { /* Iterate all CPUs in increasing order */
+			cpu_entry_t* entry = lowest_prio_cpu();
+			struct task_struct* cur = entry->scheduled;
+
+			standby_cpus[entry->cpu] = entry;
+			remove_cpu(entry);
+			if (!cur || !is_realtime(cur))
+			{
+				if (!cpu_ok)
+				{
+					cpu_ok = 1;
+					cpu_to_preempt = entry;
+				}
+				cpu++;
+				continue;
+			}
+			/* RT task may have not been alloc for cache partitions */
+			if (!count_set_bits(tsk_rt(cur)->job_params.cache_partitions))
+			{
+				if (!cpu_ok && fp_higher_prio(task, cur))
+				{
+					cpu_ok = 1;
+					cpu_to_preempt = entry;
+				}
+				cpu++;
+				continue;
+			}
+			if (!fp_higher_prio(task, cur))
+				break;
+			if (!cpu_ok)
+			{
+				cpu_ok = 1;
+				cpu_to_preempt = entry;
+			}
+			list_add(&tsk_rt(cur)->standby_list, &tsk_rt(&preempted_tasks)->standby_list);
+			if(count_set_bits(tsk_rt(cur)->job_params.cache_partitions) 
+				   != tsk_rt(cur)->task_params.num_cache_partitions)
+			{
+				printk("[WARN]task=%d, job=%d, job.cp_mask=0x%x, count_set_bits=%d, task.num_cp=%d, rt.used_cp_mask=0x%x\n",
+						   cur->pid,
+						   tsk_rt(cur)->job_params.job_no,
+						   tsk_rt(cur)->job_params.cache_partitions,
+						   count_set_bits(tsk_rt(cur)->job_params.cache_partitions),
+						   tsk_rt(cur)->task_params.num_cache_partitions,
+						   rt->used_cache_partitions);
+				TRACE_TASK(cur, "[WARN]job=%d, job.cp_mask=0x%x, count_set_bits=%d, task.num_cp=%d, rt.used_cp_mask=0x%x\n",
+						   tsk_rt(cur)->job_params.job_no,
+						   tsk_rt(cur)->job_params.cache_partitions,
+						   count_set_bits(tsk_rt(cur)->job_params.cache_partitions),
+						   tsk_rt(cur)->task_params.num_cache_partitions,
+						   rt->used_cache_partitions);
+			}
+			//BUG_ON(count_set_bits(tsk_rt(cur)->job_params.cache_partitions) 
+			//	   != tsk_rt(cur)->task_params.num_cache_partitions);
+			num_cp_to_use += tsk_rt(cur)->task_params.num_cache_partitions;
+			if (num_cp_to_use <= tsk_rt(task)->task_params.num_cache_partitions)
+				cp_mask_to_use |= tsk_rt(cur)->job_params.cache_partitions;
+			else {
+				num_cp_to_use -= tsk_rt(cur)->task_params.num_cache_partitions;
+				for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
+				{
+					if (tsk_rt(cur)->job_params.cache_partitions & (1<<i))
+					{
+						num_cp_to_use++;
+						cp_mask_to_use |= (1<<i);
+						if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
+							break;
+					}
+				}
+			}
+			cpu++;
+		} while (cpu < NR_CPUS);
+		TRACE_TASK(task, "Try to preempt cache, cache_ok=%d, cpu_ok=%d, cp_mask=0x%x, cpu_to_preempt=%d\n",
+				   cache_ok, cpu_ok, cp_mask_to_use, cpu_to_preempt->cpu);
+		if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
+			cache_ok = 1;
+		else { /* clear preempted list if not preempt */
+			struct list_head *iter, *tmp;
+			cache_ok = 0;
+			list_for_each_safe(iter, tmp, &tsk_rt(&preempted_tasks)->standby_list) {
+				list_del_init(iter);
+				//struct rt_param *rt_cur = list_entry(iter, struct rt_param, standby_list);
+				//list_del_init(&rt_cur->standby_list);
+			}
+		}
+		/* restore the cpu bheap */
+		for (cpu = 0; cpu < NR_CPUS; cpu++)  {
+			if (standby_cpus[cpu] != NULL)
+				insert_cpu(standby_cpus[cpu]);
+		}
+		memset(&standby_cpus, 0, sizeof(standby_cpus));
+	} /* Have picked cache partitions */
+
+	/* If preemptible, link task to preempted cpu, preempt preempted_tasks*/
+	if ( !cache_ok || !cpu_ok )
+	{
+		TRACE_TASK(task, "Cannot preempt, cache_ok=%d, cpu_ok=%d, rt.used_cp_mask=0x%x\n",
+				   cache_ok, cpu_ok, rt->used_cache_partitions);
+		goto out;
 	}
+	/* Preempt preempted tasks */
+	BUG_ON(!cpu_to_preempt);
+	if (!only_take_idle_cache)
+	{
+		list_for_each_safe(iter, tmp, &tsk_rt(&preempted_tasks)->standby_list) {
+			struct rt_param *rt_cur = list_entry(iter, struct rt_param, standby_list);
+			cpu_entry_t *cpu_entry = gsnfpca_cpus[rt_cur->scheduled_on];
+			list_del_init(&rt_cur->standby_list);
+			if (cpu_entry->cpu == cpu_to_preempt->cpu)
+				continue;
+			link_task_to_cpu(NULL, cpu_entry);
+			cpu_entry->flag = SCHED_FORCE_SCHED_OUT;
+			cpu_entry->preempting = task;
+			/* update global view of cache partitions */
+			rt->used_cache_partitions &= ~(rt_cur->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
+			rt_cur->job_params.cache_partitions = 0;
+			preempt(cpu_entry);
+		}
+		INIT_LIST_HEAD(&tsk_rt(&standby_tasks)->standby_list);
+	}
+	/* Link task and preempt the cpu_to_preempt */
+	task = __take_ready(&gsnfpca);
+	BUG_ON(!task);
+	tsk_rt(task)->job_params.cache_partitions = cp_mask_to_use & CACHE_PARTITIONS_MASK;
+	rt->used_cache_partitions |= cp_mask_to_use & CACHE_PARTITIONS_MASK;
+	link_task_to_cpu(task, cpu_to_preempt);
+	TRACE_TASK(task, "To preempt CPU %d, cache_ok=%d, cpu_ok=%d, job.cp_mask=0x%x, rt.used_cache_partitions=0x%x\n",
+			   cpu_to_preempt->cpu, cache_ok, cpu_ok, tsk_rt(task)->job_params.cache_partitions,
+			   rt->used_cache_partitions);
+	preempt(cpu_to_preempt);
+ out:
+	return;
 }
+
+/* check for any necessary preemptions */
+//static void check_for_preemptions_origin(void)
+//{
+//	struct task_struct *task;
+//	cpu_entry_t *last;
+//
+//
+//#ifdef CONFIG_PREFER_LOCAL_LINKING
+//	cpu_entry_t *local;
+//
+//	/* Before linking to other CPUs, check first whether the local CPU is
+//	 * idle. */
+//	local = &__get_cpu_var(gsnfpca_cpu_entries);
+//    BUG_ON(!local);
+//	task  = __peek_ready(&gsnfpca);
+//
+//	if (task && !local->linked
+//#ifdef CONFIG_RELEASE_MASTER
+//	    && likely(local->cpu != gsnfpca.release_master)
+//#endif
+//		) {
+//		task = __take_ready(&gsnfpca);
+//		TRACE_TASK(task, "linking to local CPU %d to avoid IPI\n", local->cpu);
+//		link_task_to_cpu(task, local);
+//		preempt(local);
+//	}
+//#endif
+//
+//	/*MX: TODO: This parts need rewrite! 
+// 	 *    We consider all ready tasks and the cache space!
+// 	 *    May need to iterate in terms of ready tasks */
+//	for (last = lowest_prio_cpu();
+//	     gfpca_preemption_needed(&gsnfpca, last->linked);
+//	     last = lowest_prio_cpu()) {
+//		/* preemption necessary */
+//		task = __take_ready(&gsnfpca); /* MX: TODO: may pick a low priority task with less cache */
+//		TRACE("check_for_preemptions: attempting to link task %d to %d\n",
+//		      task->pid, last->cpu);
+//
+//#ifdef CONFIG_SCHED_CPU_AFFINITY
+//		{
+//			cpu_entry_t *affinity =
+//					gsnfpca_get_nearest_available_cpu(
+//						&per_cpu(gsnfpca_cpu_entries, task_cpu(task)));
+//			if (affinity)
+//				last = affinity;
+//			else if (requeue_preempted_job(last->linked))
+//				requeue(last->linked);
+//		}
+//#else
+//		if (requeue_preempted_job(last->linked))
+//			requeue(last->linked);
+//#endif
+//
+//		link_task_to_cpu(task, last);
+//		preempt(last);
+//	}
+//}
 
 /* gsnfpca_job_arrival: task is either resumed or released */
 static noinline void gsnfpca_job_arrival(struct task_struct* task)
@@ -359,14 +602,17 @@ static void gsnfpca_release_jobs(rt_domain_t* rt, struct bheap* tasks)
 /* caller holds gsnfpca_lock */
 static noinline void job_completion(struct task_struct *t, int forced)
 {
+	rt_domain_t *rt = &gsnfpca;
 	BUG_ON(!t);
 
 	sched_trace_task_completion(t, forced);
 
-	TRACE_TASK(t, "job_completion().\n");
+	TRACE_TASK(t, "job_completion(). release cp_mask=0x%x, current used_cp_mask=0x%x\n",
+			   tsk_rt(t)->job_params.cache_partitions, rt->used_cache_partitions);
 
 	/* set flags */
 	tsk_rt(t)->completed = 0;
+	rt->used_cache_partitions &= (~(tsk_rt(current)->job_params.cache_partitions & CACHE_PARTITIONS_MASK));
 	/* prepare for next period */
 	prepare_for_next_period(t);
 	if (is_early_releasing(t) || is_released(t, litmus_clock()))
@@ -403,7 +649,7 @@ static noinline void job_completion(struct task_struct *t, int forced)
 static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 {
 	cpu_entry_t* entry = &__get_cpu_var(gsnfpca_cpu_entries);
-	int out_of_time, sleep, preempt, np, exists, blocks;
+	int out_of_time, sleep, preempt, np, exists, blocks, force_sched_out;
 	struct task_struct* next = NULL;
 
 #ifdef CONFIG_RELEASE_MASTER
@@ -431,6 +677,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	np 	    = exists && is_np(entry->scheduled);
 	sleep	    = exists && is_completed(entry->scheduled);
 	preempt     = entry->scheduled != entry->linked;
+	force_sched_out = entry->flag == SCHED_FORCE_SCHED_OUT;
 
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(prev, "invoked gsnfpca_schedule.\n");
@@ -445,8 +692,19 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	if (entry->linked && preempt)
 		TRACE_TASK(prev, "will be preempted by %s/%d\n",
 			   entry->linked->comm, entry->linked->pid);
-
-
+	if (!entry->linked && force_sched_out)
+	{
+		if (!entry->preempting)
+		{
+			TRACE_TASK(prev, "will be preempted by NULL on another core due to cache preemption.[SHOULD NOT OCCUR]\n");
+		} else
+		{
+			TRACE_TASK(prev, "will be preempted by %s/%d on another core due to cache preemption.\n",
+				   	   entry->preempting->comm, entry->preempting->pid);
+		}
+		entry->flag = SCHED_INIT;
+		entry->preempting = NULL;
+	}
 	/* If a task blocks we have no choice but to reschedule.
 	 */
 	if (blocks)
@@ -503,14 +761,15 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	raw_spin_unlock(&gsnfpca_lock);
 
 #ifdef WANT_ALL_SCHED_EVENTS
-	TRACE("gsnfpca_lock released, next=0x%p\n", next);
+	TRACE("gsnfpca_lock released, next=0x%p, force_sched_out\n", next, force_sched_out);
 
 	if (next)
 		TRACE_TASK(next, "scheduled at %llu\n", litmus_clock());
 	else if (exists && !next)
 		TRACE("becomes idle at %llu.\n", litmus_clock());
+	else
+		TRACE("idle stays idle at %llu.\n", litmus_clock());
 #endif
-
 
 	return next;
 }
@@ -523,6 +782,8 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 	cpu_entry_t* 	entry = &__get_cpu_var(gsnfpca_cpu_entries);
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
+	if (is_realtime(current))
+		TRACE_TASK(current, "lock cache ways 0x%x\n", tsk_rt(current)->job_params.cache_partitions);
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(prev, "switched away from\n");
 #endif
@@ -566,6 +827,7 @@ static void gsnfpca_task_new(struct task_struct * t, int on_rq, int is_scheduled
 
 	if (is_running(t))
 		gsnfpca_job_arrival(t);
+	tsk_rt(t)->job_params.cache_partitions = 0;
 	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
 }
 
@@ -589,6 +851,7 @@ static void gsnfpca_task_wake_up(struct task_struct *task)
 
 static void gsnfpca_task_block(struct task_struct *t)
 {
+	rt_domain_t *rt = &gsnfpca;
 	unsigned long flags;
 
 	TRACE_TASK(t, "block at %llu\n", litmus_clock());
@@ -596,6 +859,8 @@ static void gsnfpca_task_block(struct task_struct *t)
 	/* unlink if necessary */
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
 	unlink(t);
+	rt->used_cache_partitions &= (~(tsk_rt(t)->job_params.cache_partitions & CACHE_PARTITIONS_MASK));
+	TRACE_TASK(t, "blocked, used_cp_mask=0x%x\n", rt->used_cache_partitions);
 	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
 
 	BUG_ON(!is_realtime(t));
@@ -604,6 +869,7 @@ static void gsnfpca_task_block(struct task_struct *t)
 
 static void gsnfpca_task_exit(struct task_struct * t)
 {
+	rt_domain_t *rt = &gsnfpca;
 	unsigned long flags;
 
 	/* unlink if necessary */
@@ -613,6 +879,8 @@ static void gsnfpca_task_exit(struct task_struct * t)
 		gsnfpca_cpus[tsk_rt(t)->scheduled_on]->scheduled = NULL;
 		tsk_rt(t)->scheduled_on = NO_CPU;
 	}
+	rt->used_cache_partitions &= (~(tsk_rt(t)->job_params.cache_partitions));
+	TRACE_TASK(t, "exit, used_cp_mask=0x%x\n", rt->used_cache_partitions);
 	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
 
 	BUG_ON(!is_realtime(t));
@@ -622,7 +890,9 @@ static void gsnfpca_task_exit(struct task_struct * t)
 
 static long gsnfpca_admit_task(struct task_struct* tsk)
 {
-    TRACE_TASK(tsk, "is admitted unconditionally\n");
+	INIT_LIST_HEAD(&tsk_rt(tsk)->standby_list);
+    TRACE_TASK(tsk, "is admitted unconditionally, num_cp=%d\n",
+			   tsk_rt(tsk)->task_params.num_cache_partitions);
     return 0;
 /*
 	if (litmus_is_valid_fixed_prio(get_priority(tsk)))
@@ -1032,6 +1302,27 @@ static long gsnfpca_activate_plugin(void)
 	return 0;
 }
 
+/*
+ *	Deactivate current task until the beginning of the next period.
+ */
+//long gsnfpca_complete_job(void)
+//{
+//	rt_domain_t *rt = &gsnfpca;
+//	unsigned long flags;
+//
+//	/* Mark that we do not excute anymore */
+//	tsk_rt(current)->completed = 1;
+//	/* Release the cache partitions */
+//	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
+//	rt->used_cache_partitions &= (~(tsk_rt(current)->job_params.cache_partitions));
+//	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
+//	/* call schedule, this will return when a new job arrives
+//	 * it also takes care of preparing for the next release
+//	 */
+//	schedule();
+//	return 0;
+//}
+
 static long gsnfpca_deactivate_plugin(void)
 {
 	destroy_domain_proc_info(&gsnfpca_domain_proc_info);
@@ -1063,6 +1354,12 @@ static int __init init_gsn_fpca(void)
 	int cpu;
 	cpu_entry_t *entry;
 
+	INIT_LIST_HEAD(&tsk_rt(&standby_tasks)->standby_list);
+	memset(&standby_cpus, 0, sizeof(standby_cpus));
+	/* Mark the dummy task */
+	//tsk_rt(highest_dummy_task)->task_params.cls = RT_CLASS_DUMMY;
+	//tsk_rt(highest_dummy_task)->task_params.priority = 0;
+
 	bheap_init(&gsnfpca_cpu_heap);
 	/* initialize CPU state */
 	for (cpu = 0; cpu < NR_CPUS; cpu++)  {
@@ -1071,8 +1368,10 @@ static int __init init_gsn_fpca(void)
 		entry->cpu 	 = cpu;
 		entry->hn        = &gsnfpca_heap_node[cpu];
 		bheap_node_init(&entry->hn, entry);
+		entry->flag = SCHED_INIT;
 	}
 	fp_domain_init(&gsnfpca, NULL, gsnfpca_release_jobs);
+	gsnfpca.used_cache_partitions = 0;
 	return register_sched_plugin(&gsn_fpca_plugin);
 }
 

@@ -45,6 +45,9 @@ typedef struct _rt_domain {
 
 	/* how are tasks ordered in the ready queue? */
 	bheap_prio_t			order;
+
+	/* current used cache partitions */
+	uint16_t				used_cache_partitions;
 } rt_domain_t;
 
 struct release_heap {

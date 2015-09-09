@@ -24,7 +24,8 @@ static inline int lt_after_eq(lt_t a, lt_t b)
 typedef enum {
 	RT_CLASS_HARD,
 	RT_CLASS_SOFT,
-	RT_CLASS_BEST_EFFORT
+	RT_CLASS_BEST_EFFORT,
+	RT_CLASS_DUMMY
 } task_class_t;
 
 typedef enum {
@@ -67,6 +68,8 @@ typedef enum {
  * Freescale IMX6
  */
 #define MAX_CACHE_PARTITIONS	16
+#define MAX_NUM_CACHE_PARTITIONS	MAX_CACHE_PARTITIONS
+#define CACHE_PARTITIONS_MASK		((1 << MAX_NUM_CACHE_PARTITIONS) - 1)
 
 /* Provide generic comparison macros for userspace,
  * in case that we change this later. */
@@ -163,7 +166,7 @@ struct rt_job {
 	/* Which cache partitions this job is using
 	 * PL310 only has 16 way partitions.
 	 */
-	uint64_t	cache_partitions;
+	uint16_t	cache_partitions;
 
 	/* Which job is this. This is used to let user space
 	 * specify which job to wait for, which is important if jobs
@@ -287,6 +290,9 @@ struct rt_param {
 	 */
 	struct list_head list;
 
+	/* Used to cache the task when iterate a bheap
+     */
+	struct list_head standby_list;
 	/* Pointer to the page shared between userspace and kernel. */
 	struct control_page * ctrl_page;
 };
