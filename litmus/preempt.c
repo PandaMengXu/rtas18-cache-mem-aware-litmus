@@ -134,4 +134,17 @@ const char* sched_state_name(int s)
 	};
 }
 
+const char* cache_state_name(int s)
+{
+	switch (s) {
+		NAME_CHECK(CACHE_INIT);
+		NAME_CHECK(CACHE_WILL_SET);
+		NAME_CHECK(CACHE_IN_USE);
+		NAME_CHECK(CACHE_WILL_CLEAR);
+		NAME_CHECK(CACHE_CLEARED);
+	default:
+		return "UNKNOWN";
+	};
+}
+
 #endif

@@ -8,6 +8,18 @@
 /* Litmus time type. */
 typedef unsigned long long lt_t;
 
+typedef enum cache_state {
+	CACHE_INIT       = (1 << 0),  /* When task is first initialized */
+	CACHE_WILL_SET   = (1 << 1),  /* Have choose cache partitions for the task
+					* but have not set the hardware */
+	CACHE_IN_USE     = (1 << 2),  /* Have set the hardware based on
+					* the chosen cache partitions */
+	CACHE_WILL_CLEAR = (1 << 3),  /* Task cache partitions are preempted by 
+					* other tasks, reserved cache partitions will be unlocked */
+	CACHE_CLEARED 	 = (1 << 4),  /* Task cache partitions have been unlocked by
+					* hardware */
+} cache_state_t;
+
 static inline int lt_after(lt_t a, lt_t b)
 {
 	return ((long long) b) - ((long long) a) < 0;
@@ -167,6 +179,7 @@ struct rt_job {
 	 * PL310 only has 16 way partitions.
 	 */
 	uint16_t	cache_partitions;
+	cache_state_t	cache_state;
 
 	/* Which job is this. This is used to let user space
 	 * specify which job to wait for, which is important if jobs

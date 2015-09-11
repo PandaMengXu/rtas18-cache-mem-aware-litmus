@@ -6,7 +6,9 @@
 #include <linux/percpu.h>
 #include <asm/atomic.h>
 
+#include <linux/sched.h>
 #include <litmus/debug_trace.h>
+#include <litmus/rt_param.h>
 
 DECLARE_PER_CPU_SHARED_ALIGNED(atomic_t, resched_state);
 
@@ -31,7 +33,6 @@ const char* sched_state_name(int s);
 		    cpu,  (x), sched_state_name(x),			\
 		    (y), sched_state_name(y))
 
-
 typedef enum scheduling_state {
 	TASK_SCHEDULED    = (1 << 0),  /* The currently scheduled task is the one that
 					* should be scheduled, and the processor does not
@@ -49,6 +50,8 @@ typedef enum scheduling_state {
 					* determined that a higher-priority task became
 					* eligible after the task was picked. */
 } sched_state_t;
+
+const char* cache_state_name(int s);
 
 static inline sched_state_t get_sched_state_on(int cpu)
 {
