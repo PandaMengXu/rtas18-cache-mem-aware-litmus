@@ -21,6 +21,8 @@ struct release_queue {
 };
 
 typedef struct _rt_domain {
+	/* current used cache partitions */
+	uint16_t				used_cache_partitions;
 	/* runnable rt tasks are in here */
 	raw_spinlock_t 			ready_lock;
 	struct bheap	 		ready_queue;
@@ -46,8 +48,6 @@ typedef struct _rt_domain {
 	/* how are tasks ordered in the ready queue? */
 	bheap_prio_t			order;
 
-	/* current used cache partitions */
-	uint16_t				used_cache_partitions;
 } rt_domain_t;
 
 struct release_heap {

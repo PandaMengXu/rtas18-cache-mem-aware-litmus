@@ -37,6 +37,8 @@ void prepare_for_next_period(struct task_struct *t)
 	} else {
 		/* periodic release => add period */
 		setup_release(t, get_release(t) + get_rt_period(t));
+		TRACE_TASK(t, "periodic release at %llu\n",
+			   	   tsk_rt(t)->job_params.release);
 	}
 }
 

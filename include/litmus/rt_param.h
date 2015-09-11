@@ -69,7 +69,7 @@ typedef enum {
  */
 #define MAX_CACHE_PARTITIONS	16
 #define MAX_NUM_CACHE_PARTITIONS	MAX_CACHE_PARTITIONS
-#define CACHE_PARTITIONS_MASK		((1 << MAX_NUM_CACHE_PARTITIONS) - 1)
+#define CACHE_PARTITIONS_MASK		(0xffff)
 
 /* Provide generic comparison macros for userspace,
  * in case that we change this later. */
