@@ -501,8 +501,6 @@ static void check_for_preemptions(void)
 				break;
 			cpu++;
 		} while (cpu < NR_CPUS);
-		TRACE_TASK(task, "Try to preempt cache, cache_ok=%d, cpu_ok=%d, cp_mask_to_use=0x%x, cpu_to_preempt=%d\n",
-				   cache_ok, cpu_ok, cp_mask_to_use, cpu_to_preempt->cpu);
 		if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
 			cache_ok = 1;
 		else { /* clear preempted list if not preempt */
@@ -525,8 +523,8 @@ static void check_for_preemptions(void)
 	/* If preemptible, link task to preempted cpu, preempt preempted_tasks*/
 	if ( !cache_ok || !cpu_ok )
 	{
-		TRACE_TASK(task, "Cannot preempt, cache_ok=%d, cpu_ok=%d, rt.used_cp_mask=0x%x\n",
-				   cache_ok, cpu_ok, rt->used_cache_partitions);
+		TRACE_TASK(task, "Cannot preempt, cache_ok=%d, cpu_ok=%d, rt.used_cp_mask=0x%x, need %d cps\n",
+				   cache_ok, cpu_ok, rt->used_cache_partitions, tsk_rt(task)->task_params.num_cache_partitions);
 		goto out;
 	}
 	/* Preempt preempted tasks */
@@ -550,12 +548,8 @@ static void check_for_preemptions(void)
 			cpu_entry->flag = SCHED_FORCE_SCHED_OUT;
 			cpu_entry->preempting = task;
 			/* update global view of cache partitions */
-			TRACE_TASK(cpu_entry->scheduled, "preempted so we clear job.cp_mask=0x%x in rt.used_cp_mask=0x%x\n",
-					   rt_cur->job_params.cache_partitions, rt->used_cache_partitions);
 			set_cache_config(rt, tsk_cur, CACHE_WILL_CLEAR);
 			//rt->used_cache_partitions &= ~(rt_cur->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
-			TRACE_TASK(cpu_entry->scheduled, "preempted and now rt.used_cp_mask=0x%x\n",
-					   rt->used_cache_partitions);
 			//rt_cur->job_params.cache_partitions = 0;
 			preempt(cpu_entry);
 		}
@@ -950,7 +944,7 @@ static void gsnfpca_task_block(struct task_struct *t)
 	/* unlink if necessary */
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
 	unlink(t);
-	set_cache_config(rt, t, CACHE_WILL_CLEAR);
+	set_cache_config(rt, t, CACHE_CLEARED);
 	//rt->used_cache_partitions &= ~(tsk_rt(t)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
 	TRACE_TASK(t, "blocked, rt.used_cp_mask=0x%x should not include job.cp_mask=0x%x\n",
 			   rt->used_cache_partitions, tsk_rt(t)->job_params.cache_partitions);

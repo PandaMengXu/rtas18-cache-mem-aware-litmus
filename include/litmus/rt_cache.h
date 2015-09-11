@@ -59,7 +59,6 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 	return;
 }
 
-
 /* set_cache_config
  * Check task.cache_state is correct before change it
  * Change job.cache_state to new state
@@ -82,6 +81,9 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 static inline void 
 set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 {
+	TRACE_TASK(task, "Before change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
+				rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
+
 	/* Check cache_state */
 	if (s == CACHE_CLEARED)
 		check_cache_state(task, CACHE_WILL_CLEAR);
@@ -108,6 +110,8 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 			rt->used_cache_partitions |=
 		(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
 
+	TRACE_TASK(task, "After change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
+				rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
 }
 
 #endif
