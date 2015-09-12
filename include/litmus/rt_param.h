@@ -10,7 +10,7 @@ typedef unsigned long long lt_t;
 
 typedef enum cache_state {
 	CACHE_INIT       = (1 << 0),  /* When task is first initialized */
-	CACHE_WILL_SET   = (1 << 1),  /* Have choose cache partitions for the task
+	CACHE_WILL_USE   = (1 << 1),  /* Have choose cache partitions for the task
 					* but have not set the hardware */
 	CACHE_IN_USE     = (1 << 2),  /* Have set the hardware based on
 					* the chosen cache partitions */

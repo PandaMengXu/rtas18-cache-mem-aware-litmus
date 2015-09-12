@@ -13,7 +13,8 @@
 
 /* task t cache_state should be s
  */
-static inline void check_cache_state(struct task_struct *t, cache_state_t s)
+static inline void
+check_cache_state(struct task_struct *t, cache_state_t s)
 {
 	if (tsk_rt(t)->job_params.cache_state != s)
 	{
@@ -77,7 +78,7 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
  * 		a) new partitions are CACHE_IN_USE or old 
  * 		b) cache partitions are CACHE_CLEARED
  * NOTE:
- * 		a) IF s == CACHE_WILL_SET, before call this func
+ * 		a) IF s == CACHE_WILL_USE, before call this func
  * 		   job.cache_partitions must be setup 
  * 		   rt_param.scheduled_on must be setup
  * 		b) IF s == CACHE_WILL_CLEAR | CACHE_CLEARED
@@ -96,7 +97,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 	if (s == CACHE_CLEARED)
 		check_cache_state(task, CACHE_WILL_CLEAR);
 	if (s == CACHE_IN_USE)
-		check_cache_state(task, CACHE_WILL_SET);
+		check_cache_state(task, CACHE_WILL_USE);
 	/* Change cache_state */
 	set_cache_state(task, s);
 	/* Change PL310 cache partition register */
