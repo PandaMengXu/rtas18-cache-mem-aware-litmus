@@ -2,6 +2,7 @@
 #define LITMUS_RT_CACHE_H
 
 #include <litmus/preempt.h>
+#include <litmus/cache_proc.h>
 
 #define TRACE_CACHE_STATE_CHANGE(x, y, task)				\
 	TRACE_TASK(task, "job:%d cp_mask:0x%x %d(%s) -> %d(%s)\n",	\
@@ -35,6 +36,11 @@ set_cache_state(struct task_struct *task, cache_state_t s)
 
 /* lock_cache_partitions
  * lock cp_mask for cpu so that only cpu can use cp_mask
+ * NOTE:
+ * 1) rt.lock is grabbed by the caller so that
+ *    scheduler on diff CPUs do not have race condition
+ * 2) We have race condition when user write to /proc/sys
+ *    As long as users do not write to /proc/sys, we are safe
  */
 static inline void
 lock_cache_partitions(int cpu, uint16_t cp_mask)
@@ -43,6 +49,7 @@ lock_cache_partitions(int cpu, uint16_t cp_mask)
 	{
 		TRACE("[ERROR] try to lock 0x%x on NO_CPU\n", cp_mask);
 	}
+	__lock_cache_ways_to_cpu(cpu, cp_mask);
 	return;
 }
 
@@ -56,6 +63,7 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 	{
 		TRACE("[ERROR] try to unlock 0x%x on NO_CPU\n", cp_mask);
 	}
+	__unlock_cache_ways_to_cpu(cpu);
 	return;
 }
 

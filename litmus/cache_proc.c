@@ -233,6 +233,128 @@ void litmus_setup_lockdown(void __iomem *base, u32 id)
 	test_lockdown(NULL);
 }
 
+int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
+{
+	int ret = 0;
+	
+	if (ways_mask > way_partition_max) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	if (cpu < 0 || cpu > 4) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	way_partitions[cpu*2] = ways_mask;
+
+	writel_relaxed(~way_partitions[cpu*2], ld_d_reg(cpu));
+	writel_relaxed(~way_partitions[cpu*2], ld_i_reg(cpu));
+	
+out:
+	return ret;
+}
+
+int lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
+{
+	int ret = 0;
+
+	mutex_lock(&lockdown_proc);
+
+	ret = __lock_cache_ways_to_cpu(cpu, ways_mask);
+
+	mutex_unlock(&lockdown_proc);
+
+	return ret;
+}
+
+int __unlock_cache_ways_to_cpu(int cpu)
+{
+	return __lock_cache_ways_to_cpu(cpu, UNLOCK_ALL);
+}
+
+int unlock_cache_ways_to_cpu(int cpu)
+{
+	int ret = 0;
+
+	mutex_lock(&lockdown_proc);
+
+	ret = __unlock_cache_ways_to_cpu(cpu);
+
+	mutex_unlock(&lockdown_proc);
+
+	return ret;
+}
+
+static int __get_cache_ways_to_cpu(int cpu)
+{
+	int ret = 0;
+	unsigned long flags;
+	u32 ways_mask_i, ways_mask_d;
+	
+	mutex_lock(&lockdown_proc);
+
+	if (cpu < 0 || cpu > 4) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	local_irq_save(flags);
+	ways_mask_d = readl_relaxed(ld_d_reg(cpu));
+	ways_mask_i = readl_relaxed(ld_i_reg(cpu));
+	local_irq_restore(flags);
+
+	if (ways_mask_i != ways_mask_d) {
+		printk(KERN_ERR "Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
+		ret = ways_mask_i;
+	}
+out:
+	mutex_unlock(&lockdown_proc);
+	return ret;
+}
+
+int get_cache_ways_to_cpu(int cpu)
+{
+	int ret = 0;
+	
+	mutex_lock(&lockdown_proc);
+
+	ret = __get_cache_ways_to_cpu(cpu);
+
+	mutex_unlock(&lockdown_proc);
+
+	return ret;
+}
+
+static int __unlock_all_cache_ways(void)
+{
+	int ret = 0, i;
+
+	for (i = 0; i < 4; ++i) {
+		way_partitions[i*2] = UNLOCK_ALL;
+
+		writel_relaxed(~way_partitions[i*2], ld_d_reg(i));
+		writel_relaxed(~way_partitions[i*2], ld_i_reg(i));
+	}
+
+	return ret;
+}
+
+int unlock_all_cache_ways(void)
+{
+	int ret = 0;
+	
+	mutex_lock(&lockdown_proc);
+
+	ret = __unlock_all_cache_ways();
+
+	mutex_unlock(&lockdown_proc);
+
+	return ret;
+}
+
+
 int way_partition_handler(struct ctl_table *table, int write, void __user *buffer,
 		size_t *lenp, loff_t *ppos)
 {
@@ -244,23 +366,26 @@ int way_partition_handler(struct ctl_table *table, int write, void __user *buffe
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
-	
+
 	if (write) {
 		printk("Way-partition settings:\n");
 		for (i = 0; i < 9; i++) {
 			printk("0x%08X\n", way_partitions[i]);
 		}
 		for (i = 0; i < 4; i++) {
-			writel_relaxed(~way_partitions[i*2], cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
-				       i * L2X0_LOCKDOWN_STRIDE);
-			writel_relaxed(~way_partitions[i*2], cache_base + L2X0_LOCKDOWN_WAY_I_BASE +
-				       i * L2X0_LOCKDOWN_STRIDE);
+
+			__lock_cache_ways_to_cpu(i, way_partitions[i*2]);
+			//writel_relaxed(~way_partitions[i*2], cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
+		//		       i * L2X0_LOCKDOWN_STRIDE);
+			//writel_relaxed(~way_partitions[i*2], cache_base + L2X0_LOCKDOWN_WAY_I_BASE +
+		//		       i * L2X0_LOCKDOWN_STRIDE);
 		}
 	}
 	
 	local_irq_save(flags);
 	print_lockdown_registers(smp_processor_id());
 	local_irq_restore(flags);
+
 out:
 	mutex_unlock(&lockdown_proc);
 	return ret;
