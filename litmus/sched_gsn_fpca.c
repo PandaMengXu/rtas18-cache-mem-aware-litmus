@@ -560,6 +560,7 @@ static noinline void job_completion(struct task_struct *t, int forced)
 
 	/* set flags */
 	tsk_rt(t)->completed = 0;
+	set_cache_config(rt, t, CACHE_WILL_CLEAR);
 	set_cache_config(rt, t, CACHE_CLEARED);
 	/* prepare for next period */
 	prepare_for_next_period(t);
@@ -728,12 +729,24 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 		if (exists)
 			next = prev;
 
+	/* Task next job execute immediately after previous job finish
+ 	 * entry->scheduled is still the task but we are at next job 
+ 	 * need to update the cache state status to CACHE_IN_USE because
+ 	 * rt.cache_partitions were cleared when previous job finish */
+	if (entry->scheduled && is_realtime(entry->scheduled))
+	{
+		if (tsk_rt(entry->scheduled)->job_params.cache_state & CACHE_WILL_USE)
+			set_cache_config(rt, entry->scheduled, CACHE_IN_USE);
+		if (tsk_rt(entry->scheduled)->job_params.cache_state & CACHE_WILL_CLEAR)
+			set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
+	}
+
 	sched_state_task_picked();
 
 	raw_spin_unlock(&gsnfpca_lock);
 
 #ifdef WANT_ALL_SCHED_EVENTS
-	TRACE("gsnfpca_lock released, next=0x%p\n", next);
+	TRACE_TASK(next, "gsnfpca_lock released\n");
 
 	if (next)
 		TRACE_TASK(next, "scheduled at %llu\n", litmus_clock());
