@@ -512,15 +512,16 @@ static void check_for_preemptions(void)
 		INIT_LIST_HEAD(&tsk_rt(&standby_tasks)->standby_list);
 	}
 	/* Link task and preempt the cpu_to_preempt */
+	/* requeue unfinished preempted task */
+	if (requeue_preempted_job(cpu_to_preempt->linked))
+		requeue(cpu_to_preempt->linked);
+	link_task_to_cpu(task, cpu_to_preempt);
+	/* Now we know which CPU the task will run on to lock the cache */
 	tsk_rt(task)->job_params.cache_partitions = (cp_mask_to_use & CACHE_PARTITIONS_MASK);
 	set_cache_config(rt, task, CACHE_WILL_USE);
 	TRACE_TASK(task, "To preempt CPU %d, cache_ok=%d, cpu_ok=%d, job.cp_mask=0x%x, rt.used_cp_mask=0x%x\n",
 			   cpu_to_preempt->cpu, cache_ok, cpu_ok, tsk_rt(task)->job_params.cache_partitions,
 			   rt->used_cache_partitions);
-	/* requeue unfinished preempted task */
-	if (requeue_preempted_job(cpu_to_preempt->linked))
-		requeue(cpu_to_preempt->linked);
-	link_task_to_cpu(task, cpu_to_preempt);
 	preempt(cpu_to_preempt);
  out:
 	return;

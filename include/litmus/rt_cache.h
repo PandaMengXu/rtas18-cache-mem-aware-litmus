@@ -80,7 +80,7 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
  * NOTE:
  * 		a) IF s == CACHE_WILL_USE, before call this func
  * 		   job.cache_partitions must be setup 
- * 		   rt_param.scheduled_on must be setup
+ * 		   rt_param.linked_on must be setup
  * 		b) IF s == CACHE_WILL_CLEAR | CACHE_CLEARED
  * 		   rt_param.scheduled_on must NOT be cleared
  * 		   job.cache_partitions do not have to be cleared since
@@ -115,7 +115,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 				tsk_rt(task)->job_params.cache_partitions);
 	//if (s == CACHE_IN_USE) /* Lock cp earlier to avoid race condition and avoid just preempted task to use the preempted cp */
 	if (s == CACHE_WILL_USE)
-		lock_cache_partitions(tsk_rt(task)->scheduled_on,
+		lock_cache_partitions(tsk_rt(task)->linked_on,
 				tsk_rt(task)->job_params.cache_partitions);
 	/* Change rt.used_cache_partitions if
  	 * s == CACHE_CLEARED : clear job.cache_partitions bits
