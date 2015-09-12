@@ -92,7 +92,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 {
 	TRACE_TASK(task, "Before change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
 				rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
-
+	
 	/* Check cache_state */
 	if (s == CACHE_CLEARED)
 		check_cache_state(task, CACHE_WILL_CLEAR);
