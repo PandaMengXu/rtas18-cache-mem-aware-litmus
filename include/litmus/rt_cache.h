@@ -102,32 +102,42 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 		check_cache_state(task, CACHE_WILL_USE | CACHE_IN_USE);
 	/* Clear job.cp if cache state CACHE_WILL_USE -> CACHE_WILL_CLEAR
  	 * job.cp indicate if cp have been lock 
- 	 * job.cp != 0 only in CACHE_WILL_USE | CACHE_IN_USE */
-	if ((tsk_rt(task)->job_params.cache_state & CACHE_WILL_USE) &&
-		(s & (CACHE_WILL_CLEAR | CACHE_CLEARED)))
-		tsk_rt(task)->job_params.cache_partitions = 0;
+ 	 * job.cp != 0 only in CACHE_WILL_USE | CACHE_IN_USE 
+ 	 * NOTE: we lock/unlock cache at WILL_USE and WILL_CLEAR */
+	//if ((tsk_rt(task)->job_params.cache_state & CACHE_WILL_USE) &&
+	//	(s & (CACHE_WILL_CLEAR | CACHE_CLEARED)))
+	//	tsk_rt(task)->job_params.cache_partitions = 0;
+	
 	/* Change cache_state */
 	set_cache_state(task, s);
 	/* Change PL310 cache partition register */
 	//if (s == CACHE_CLEARED) /* Unlock cp earlier to avoid race condition */
-	if (s == CACHE_WILL_CLEAR)
-		unlock_cache_partitions(tsk_rt(task)->scheduled_on,
-				tsk_rt(task)->job_params.cache_partitions);
+	//if (s == CACHE_WILL_CLEAR)
+	//	unlock_cache_partitions(tsk_rt(task)->scheduled_on,
+	//			tsk_rt(task)->job_params.cache_partitions);
 	//if (s == CACHE_IN_USE) /* Lock cp earlier to avoid race condition and avoid just preempted task to use the preempted cp */
-	if (s == CACHE_WILL_USE)
-		lock_cache_partitions(tsk_rt(task)->linked_on,
-				tsk_rt(task)->job_params.cache_partitions);
+	//if (s == CACHE_WILL_USE)
+	//	lock_cache_partitions(tsk_rt(task)->linked_on,
+	//			tsk_rt(task)->job_params.cache_partitions);
 	/* Change rt.used_cache_partitions if
- 	 * s == CACHE_CLEARED : clear job.cache_partitions bits
- 	 * s == CACHE_IN_USE  : set job.cache_partitions bits
+ 	 * s is CACHE_WILL_CLEAR | CACHE_CLEARED : clear job.cache_partitions bits
+ 	 * s is CACHE_WILL_USE | CACHE_IN_USE  : set job.cache_partitions bits
+ 	 * We do not repeatly lock/unlock the cache for the same task
  	 */
 	//if (s == CACHE_CLEARED)
-	if (s == CACHE_WILL_CLEAR)
+	if (s == CACHE_WILL_CLEAR &&
+		!(tsk_rt(task)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED)))
 	{
 		/* job.cp_mask should all in rt.used_cp_mask */
 		if ((~rt->used_cache_partitions) & tsk_rt(task)->job_params.cache_partitions)
 			TRACE_TASK(task, "[ERROR] Unlock a cp not used rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
 					   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
+		TRACE_TASK(task, "rt.used_cp=0x%x, job.cp=0x%x ~job.cp=0x%x\n",
+				   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions,
+				   ~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK));
+		/* PL310 unlock cache */
+		unlock_cache_partitions(tsk_rt(task)->scheduled_on,
+				tsk_rt(task)->job_params.cache_partitions);
 		rt->used_cache_partitions &= 
 			~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
 		/* Reset cp to 0 to indicate the cp are unlocked 
@@ -136,13 +146,17 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 		tsk_rt(task)->job_params.cache_partitions = 0;
 	}
 	//if (s == CACHE_IN_USE)
-	if (s == CACHE_WILL_USE)
+	if (s == CACHE_WILL_USE &&
+		!(tsk_rt(task)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE)))
 	{
 		if (tsk_rt(task)->job_params.cache_partitions & rt->used_cache_partitions)
 			TRACE_TASK(task, "[ERROR] Lock a cp already used rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
 					   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
+		/* PL310 lock cache */
+		lock_cache_partitions(tsk_rt(task)->linked_on,
+				tsk_rt(task)->job_params.cache_partitions);
 		rt->used_cache_partitions |=
-		(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
+			(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
 	}
 
 	TRACE_TASK(task, "After change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",

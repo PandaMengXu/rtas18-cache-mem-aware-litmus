@@ -562,7 +562,7 @@ static noinline void job_completion(struct task_struct *t, int forced)
 	/* set flags */
 	tsk_rt(t)->completed = 0;
 	set_cache_config(rt, t, CACHE_WILL_CLEAR);
-	set_cache_config(rt, t, CACHE_CLEARED);
+	//set_cache_config(rt, t, CACHE_CLEARED);
 	/* prepare for next period */
 	prepare_for_next_period(t);
 	if (is_early_releasing(t) || is_released(t, litmus_clock()))
@@ -573,6 +573,74 @@ static noinline void job_completion(struct task_struct *t, int forced)
 	 * But don't requeue a blocking task. */
 	if (is_running(t))
 		gsnfpca_job_arrival(t);
+}
+
+/* gsnfpca_check_sched_invariant
+ * Check sched invariant at end of gsnfpca_schedule
+ * gsnfpca.lock is grabbed by caller
+ */
+void gsnfpca_check_sched_invariant()
+{
+	int i;
+	cpu_entry_t *entry = NULL;
+	struct task_struct *task = NULL;
+	struct task_struct *qtask = NULL;
+	struct task_struct *preempted_task = NULL;
+	rt_domain_t *rt = &gsnfpca;
+	int num_used_cp = 0;
+	int num_avail_cp = 0;
+	int cpu_ok = 0;
+	int preempted_cpu = -1;
+
+	qtask = __peek_ready(&gsnfpca);
+	/* No ready RT task */
+	if (!qtask)
+		return;
+
+	num_used_cp =
+        count_set_bits(rt->used_cache_partitions & CACHE_PARTITIONS_MASK);
+	num_avail_cp = MAX_NUM_CACHE_PARTITIONS - num_used_cp;
+	for (i=0; i<NR_CPUS; i++)
+	{
+		entry = gsnfpca_cpus[i];
+		task = entry->scheduled;
+		if (!task || !is_realtime(task))
+		{
+			cpu_ok = 1;
+			preempted_cpu = i;
+			preempted_task = task;
+			continue;
+		}
+		if (fp_higher_prio(qtask, task))
+		{
+			cpu_ok = 1;
+			preempted_cpu = i;
+			preempted_task = task;
+			num_avail_cp += tsk_rt(task)->task_params.num_cache_partitions;
+		}
+	}
+
+	if (cpu_ok && 
+		num_avail_cp >= tsk_rt(qtask)->task_params.num_cache_partitions)
+	{
+		if (preempted_task && is_realtime(preempted_task))
+			TRACE_TASK(qtask, "[ERROR] can preempt %s/%d/%d on P%d rt.cp=0x%x qtask.num_cp=%d\n",
+				   preempted_task->comm, preempted_task->pid,
+				   tsk_rt(preempted_task)->job_params.job_no, preempted_cpu,
+				   rt->used_cache_partitions, tsk_rt(qtask)->task_params.num_cache_partitions);
+		if (preempted_task && !is_realtime(preempted_task))
+			TRACE_TASK(qtask, "[ERROR] can preempt %s/%d on P%d rt.cp=0x%x qtask.num_cp=%d\n",
+				   preempted_task->comm, preempted_task->pid,
+				   preempted_cpu,
+				   rt->used_cache_partitions, tsk_rt(qtask)->task_params.num_cache_partitions);
+		if (!preempted_task)
+			TRACE_TASK(qtask, "[ERROR] can preempt NULL on P%d rt.cp=0x%x qtask.num_cp=%d\n",
+				   preempted_cpu,
+				   rt->used_cache_partitions, tsk_rt(qtask)->task_params.num_cache_partitions);
+		
+	}
+
+	return;
 }
 
 /* Getting schedule() right is a bit tricky. schedule() may not make any
@@ -600,7 +668,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 {
 	rt_domain_t *rt = &gsnfpca;
 	cpu_entry_t* entry = &__get_cpu_var(gsnfpca_cpu_entries);
-	int out_of_time, sleep, preempt, np, exists, blocks;
+	int out_of_time, sleep, preempt, np, exists, blocks, finish;
 	struct task_struct* next = NULL;
 	cache_state_t cache_state_prev;
 
@@ -630,6 +698,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	sleep	    = exists && is_completed(entry->scheduled);
 	preempt     = entry->scheduled != entry->linked;
 	cache_state_prev = tsk_rt(prev)->job_params.cache_state;
+	finish 	= 0;
 
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(prev, "invoked gsnfpca_schedule.\n");
@@ -667,7 +736,10 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	 * for blocked jobs).
 	 */
 	if (!np && (out_of_time || sleep) && !blocks)
+	{
+		finish = 1;
 		job_completion(entry->scheduled, !sleep);
+	}
 
 	/* Link pending task if we became unlinked.
  	 * But do not link if the core is preempted only via cache 
@@ -694,18 +766,19 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	if ((!np || blocks) &&
 	    entry->linked != entry->scheduled) {
 		if (entry->scheduled) {
-			set_cache_config(rt, entry->scheduled, CACHE_CLEARED);
+			/* We unlock cache at CACHE_WILL_CLEAR state */
+			set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 			/* not gonna be scheduled soon */
 			entry->scheduled->rt_param.scheduled_on = NO_CPU;
 			/* No need to set job_params.cache_partitions to 0 because cache_state has indicated that. */
 			TRACE_TASK(entry->scheduled, "scheduled_on = NO_CPU, rt->used_cp_mask=0x%x should exclude job.cp_mask=0x%x\n",
 					   rt->used_cache_partitions, entry->scheduled->rt_param.job_params.cache_partitions);
 			/* Trace when preempted via cache by another CPU */
-			if (!entry->linked)
+			if (!entry->linked && !finish)
 			{
 				if (!entry->preempting)
 				{
-					TRACE_TASK(entry->scheduled, "[WARN]preempted by NULL.\n");
+					TRACE_TASK(entry->scheduled, "[WARN] preempted by NULL.\n");
 				} else
 				{
 					TRACE_TASK(entry->scheduled, "preempted by %s/%d/%d due to cache preemption\n",
@@ -719,7 +792,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 		if (entry->linked) {
 			entry->linked->rt_param.scheduled_on = entry->cpu;
 			next = entry->linked;
-			set_cache_config(rt, next, CACHE_IN_USE);
+			set_cache_config(rt, next, CACHE_WILL_USE);
 			TRACE_TASK(next, "scheduled_on = P%d, rt.used_cp_mask=0x%x should include job.cp_mask=0x%x\n",
 					   smp_processor_id(), rt->used_cache_partitions, tsk_rt(next)->job_params.cache_partitions);
 		}
@@ -739,10 +812,21 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 		if (tsk_rt(entry->scheduled)->job_params.cache_state & CACHE_WILL_USE)
 			set_cache_config(rt, entry->scheduled, CACHE_IN_USE);
 		if (tsk_rt(entry->scheduled)->job_params.cache_state & CACHE_WILL_CLEAR)
-			set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
+			set_cache_config(rt, entry->scheduled, CACHE_CLEARED);
+	}
+	if (entry->linked && is_realtime(entry->linked))
+	{
+		if (tsk_rt(entry->linked)->job_params.cache_state & CACHE_WILL_USE)
+			set_cache_config(rt, entry->linked, CACHE_IN_USE);
+		if (tsk_rt(entry->linked)->job_params.cache_state & CACHE_WILL_CLEAR)
+			set_cache_config(rt, entry->linked, CACHE_CLEARED);
 	}
 
 	sched_state_task_picked();
+
+	/* Check correctness of scheduler
+  	 * NOTE: TODO: avoid such check in non-debug mode */
+	//gsnfpca_check_sched_invariant();
 
 	raw_spin_unlock(&gsnfpca_lock);
 
@@ -852,7 +936,7 @@ static void gsnfpca_task_block(struct task_struct *t)
 	/* unlink if necessary */
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
 	unlink(t);
-	set_cache_config(rt, t, CACHE_CLEARED);
+	set_cache_config(rt, t, CACHE_WILL_CLEAR);
 	TRACE_TASK(t, "blocked, rt.used_cp_mask=0x%x should not include job.cp_mask=0x%x\n",
 			   rt->used_cache_partitions, tsk_rt(t)->job_params.cache_partitions);
 	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
@@ -869,7 +953,9 @@ static void gsnfpca_task_exit(struct task_struct * t)
 	/* unlink if necessary */
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
 	unlink(t);
+	set_cache_config(rt, t, CACHE_WILL_CLEAR);
 	set_cache_config(rt, t, CACHE_CLEARED);
+	/* Do simple schedule here instead of gsnfpca_schedule() */
 	if (tsk_rt(t)->scheduled_on != NO_CPU) {
 		gsnfpca_cpus[tsk_rt(t)->scheduled_on]->scheduled = NULL;
 		tsk_rt(t)->scheduled_on = NO_CPU;
