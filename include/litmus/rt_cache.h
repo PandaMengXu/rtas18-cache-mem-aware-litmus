@@ -108,8 +108,6 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 	//	(s & (CACHE_WILL_CLEAR | CACHE_CLEARED)))
 	//	tsk_rt(task)->job_params.cache_partitions = 0;
 	
-	/* Change cache_state */
-	set_cache_state(task, s);
 	/* Change PL310 cache partition register */
 	//if (s == CACHE_CLEARED) /* Unlock cp earlier to avoid race condition */
 	//if (s == CACHE_WILL_CLEAR)
@@ -159,6 +157,8 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 			(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
 	}
 
+	/* Change cache_state */
+	set_cache_state(task, s);
 	TRACE_TASK(task, "After change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
 				rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
 }

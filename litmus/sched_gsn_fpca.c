@@ -305,7 +305,7 @@ static void check_for_preemptions(void)
 	int cpu_ok = 0;
 	int cache_ok = 0;
 	int only_take_idle_cache = 0;
-	uint32_t cp_mask_to_use = 0; /* mask of cache partitions the task to use */
+	uint16_t cp_mask_to_use = 0; /* mask of cache partitions the task to use */
 	int num_cp_to_use = 0;
 	struct task_struct preempted_tasks;
 	cpu_entry_t *cpu_to_preempt = NULL;
@@ -350,12 +350,15 @@ static void check_for_preemptions(void)
 		cp_mask_to_use = 0;
 		for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
 		{
-			if (!(rt->used_cache_partitions & (1<<i)))
+			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
+				break;
+			if (!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK))
 			{
-				cp_mask_to_use |= (1<<i);
+				if (cp_mask_to_use & (1<<i) & CACHE_PARTITIONS_MASK)
+					TRACE_TASK(task, "cp_mask_to_use=0x%x double set i=%d\n",
+							   cp_mask_to_use, i);
+				cp_mask_to_use |= (1<<i) & CACHE_PARTITIONS_MASK;
 				num_cp_to_use += 1;
-				if ( num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
-					break;
 			}
 		}
 		/* Find the lowest priority CPU to preempt */
@@ -380,18 +383,35 @@ static void check_for_preemptions(void)
 		/* take idle cache partitions first */
 		for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
 		{
-			if (!(rt->used_cache_partitions & (1<<i)))
+			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
 			{
-				cp_mask_to_use |= (1<<i);
+				TRACE_TASK(task, "[BUG] Idle cache is enough but still try to preempt cache\n");
+				break;
+			}
+			if (!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK))
+			{
+				if (cp_mask_to_use & (1<<i) & CACHE_PARTITIONS_MASK)
+					TRACE_TASK(task, "cp_mask_to_use=0x%x double set i=%d\n",
+							   cp_mask_to_use, i);
+				cp_mask_to_use |= (1<<i) & CACHE_PARTITIONS_MASK;
 				num_cp_to_use++;
 			}
 		}
+		TRACE_TASK(task, "take idle cps 0x%x\n", cp_mask_to_use);
 
-		BUG_ON(num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions);
+		//BUG_ON(num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions);
+		if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
+		{
+			TRACE_TASK(task, "[BUG] num_cp_to_use=%d >= task.num_cp=%d\n",
+					   num_cp_to_use, tsk_rt(task)->task_params.num_cache_partitions);
+		}
 		do { /* Iterate all CPUs in increasing order */
 			cpu_entry_t* entry = lowest_prio_cpu();
-			struct task_struct* cur = entry->scheduled;
+			struct task_struct* cur;
 
+			if (!entry)
+				break;
+			cur = entry->scheduled;
 			standby_cpus[entry->cpu] = entry;
 			remove_cpu(entry);
 			if (!cur || !is_realtime(cur))
@@ -405,17 +425,22 @@ static void check_for_preemptions(void)
 				continue;
 			}
 			/* RT task may have not locked any cache partition */
-			if (!count_set_bits(tsk_rt(cur)->job_params.cache_partitions) ||
-				!(tsk_rt(cur)->job_params.cache_state & (CACHE_IN_USE | CACHE_WILL_USE)))
+			if (!(tsk_rt(cur)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE)))
 			{
-				if (!cpu_ok && fp_higher_prio(task, cur))
-				{
-					cpu_ok = 1;
-					cpu_to_preempt = entry;
-				}
 				cpu++;
 				continue;
 			}
+//			if (!count_set_bits(tsk_rt(cur)->job_params.cache_partitions) ||
+//				!(tsk_rt(cur)->job_params.cache_state & (CACHE_IN_USE | CACHE_WILL_USE)))
+//			{
+//				if (!cpu_ok && fp_higher_prio(task, cur))
+//				{
+//					cpu_ok = 1;
+//					cpu_to_preempt = entry;
+//				}
+//				cpu++;
+//				continue;
+//			}
 			if (!fp_higher_prio(task, cur))
 				break;
 			if (!cpu_ok)
@@ -442,9 +467,16 @@ static void check_for_preemptions(void)
 						   rt->used_cache_partitions);
 			}
 			num_cp_to_use += tsk_rt(cur)->task_params.num_cache_partitions;
-			if (num_cp_to_use <= tsk_rt(task)->task_params.num_cache_partitions)
+			if (num_cp_to_use <= tsk_rt(task)->task_params.num_cache_partitions) {
+				if (cp_mask_to_use & tsk_rt(cur)->job_params.cache_partitions)
+				{
+					TRACE_TASK(task, "[BUG] preempt %s/%d/%d cache 0x%x but already has cache 0x%x\n",
+				   			   cur->comm, cur->pid, tsk_rt(cur)->job_params.job_no,
+							   tsk_rt(cur)->job_params.cache_partitions,
+							   cp_mask_to_use);
+				}
 				cp_mask_to_use |= tsk_rt(cur)->job_params.cache_partitions;
-			else {
+			} else {
 				num_cp_to_use -= tsk_rt(cur)->task_params.num_cache_partitions;
 				for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
 				{
@@ -452,11 +484,20 @@ static void check_for_preemptions(void)
 					{
 						if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
 							break;
+						if (cp_mask_to_use & (1<<i))
+						{
+							TRACE_TASK(task, "[BUG] preempt %s/%d/%d cache 0x%x (i=%d) but already has cache 0x%x\n",
+									   cur->comm, cur->pid, tsk_rt(cur)->job_params.job_no,
+									   tsk_rt(cur)->job_params.cache_partitions, i,
+									   cp_mask_to_use);
+						}
 						num_cp_to_use++;
 						cp_mask_to_use |= (1<<i);
 					}
 				}
 			}
+			TRACE_TASK(task, "preempt %s/%d/%d, cp_mask_to_use=0x%x\n",
+					   cur->comm, cur->pid, tsk_rt(cur)->job_params.job_no, cp_mask_to_use);
 			/* Stop searching preempted cache when we find enough */
 			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
 				break;
@@ -498,25 +539,34 @@ static void check_for_preemptions(void)
 			struct task_struct *tsk_cur = list_entry(rt_cur, struct task_struct, rt_param); /*MX: If not correct, we add a upper link to task_struct */
 			cpu_entry_t *cpu_entry = gsnfpca_cpus[rt_cur->scheduled_on];
 			list_del_init(&rt_cur->standby_list);
-			if (cpu_entry->cpu == cpu_to_preempt->cpu)
-				continue;
 			/* requeue the linked task; scheduled task is requeued at schedule() */
 			if (requeue_preempted_job(cpu_entry->linked))
 				requeue(cpu_entry->linked);
-			link_task_to_cpu(NULL, cpu_entry);
-			cpu_entry->preempting = task;
 			/* update global view of cache partitions */
 			set_cache_config(rt, tsk_cur, CACHE_WILL_CLEAR);
-			preempt(cpu_entry);
+			if (cpu_entry->cpu != cpu_to_preempt->cpu)
+			{
+				link_task_to_cpu(NULL, cpu_entry);
+				cpu_entry->preempting = task;
+				preempt(cpu_entry);
+			} else {
+				link_task_to_cpu(task, cpu_to_preempt);
+			}
 		}
 		INIT_LIST_HEAD(&tsk_rt(&standby_tasks)->standby_list);
 	}
 	/* Link task and preempt the cpu_to_preempt */
 	/* requeue unfinished preempted task */
-	if (requeue_preempted_job(cpu_to_preempt->linked))
-		requeue(cpu_to_preempt->linked);
-	link_task_to_cpu(task, cpu_to_preempt);
-	/* Now we know which CPU the task will run on to lock the cache */
+	//if (requeue_preempted_job(cpu_to_preempt->linked))
+	//	requeue(cpu_to_preempt->linked);
+	//link_task_to_cpu(task, cpu_to_preempt);
+
+	/* Set up the preempting task and invoke schedule on preempted CPU */
+	if (count_set_bits(cp_mask_to_use) != tsk_rt(task)->task_params.num_cache_partitions)
+	{
+		TRACE_TASK(task, "[ERROR] cp_mask_to_use=0x%x bits num != task.num_cp %d\n",
+				   cp_mask_to_use, tsk_rt(task)->task_params.num_cache_partitions);
+	}
 	tsk_rt(task)->job_params.cache_partitions = (cp_mask_to_use & CACHE_PARTITIONS_MASK);
 	set_cache_config(rt, task, CACHE_WILL_USE);
 	TRACE_TASK(task, "To preempt CPU %d, cache_ok=%d, cpu_ok=%d, job.cp_mask=0x%x, rt.used_cp_mask=0x%x\n",
@@ -616,7 +666,8 @@ void gsnfpca_check_sched_invariant()
 			cpu_ok = 1;
 			preempted_cpu = i;
 			preempted_task = task;
-			num_avail_cp += tsk_rt(task)->task_params.num_cache_partitions;
+			if (tsk_rt(task)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
+				num_avail_cp += tsk_rt(task)->task_params.num_cache_partitions;
 		}
 	}
 
@@ -826,7 +877,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 
 	/* Check correctness of scheduler
   	 * NOTE: TODO: avoid such check in non-debug mode */
-	//gsnfpca_check_sched_invariant();
+	gsnfpca_check_sched_invariant();
 
 	raw_spin_unlock(&gsnfpca_lock);
 
