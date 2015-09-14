@@ -1007,9 +1007,11 @@ static void gsnfpca_task_exit(struct task_struct * t)
 
 	/* unlink if necessary */
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
-	unlink(t);
+	/* Unlock cache before unlink task since
+ 	 * we need to know which CPU to unlock for */
 	set_cache_config(rt, t, CACHE_WILL_CLEAR);
 	set_cache_config(rt, t, CACHE_CLEARED);
+	unlink(t);
 	/* Do simple schedule here instead of gsnfpca_schedule() */
 	if (tsk_rt(t)->scheduled_on != NO_CPU) {
 		gsnfpca_cpus[tsk_rt(t)->scheduled_on]->scheduled = NULL;
