@@ -627,6 +627,36 @@ static noinline void job_completion(struct task_struct *t, int forced)
 		gsnfpca_job_arrival(t);
 }
 
+void gsnfpca_dump_cpus()
+{
+	int i;
+	cpu_entry_t *entry = NULL;
+	struct task_struct *ltask, *stask;
+
+	for (i = 0; i < NR_CPUS; i++)
+	{
+		entry = gsnfpca_cpus[i];
+		ltask = entry->linked;
+		stask = entry->scheduled;
+		if (ltask)
+		{
+			TRACE_TASK(ltask, "[DUMP] P%d ltask job.cp=0x%x t.num_cp=%d, cache_state=%d(%s)\n",
+					   i, tsk_rt(ltask)->job_params.cache_partitions,
+					   tsk_rt(ltask)->task_params.num_cache_partitions,
+					   tsk_rt(ltask)->job_params.cache_state,
+					   cache_state_name(tsk_rt(ltask)->job_params.cache_state));
+		}
+		if (stask)
+		{
+			TRACE_TASK(stask, "[DUMP] P%d stask job.cp=0x%x t.num_cp=%d, cache_state=%d(%s)\n",
+					   i, tsk_rt(stask)->job_params.cache_partitions,
+					   tsk_rt(stask)->task_params.num_cache_partitions,
+					   tsk_rt(stask)->job_params.cache_state,
+					   cache_state_name(tsk_rt(stask)->job_params.cache_state));
+		}
+	}
+}
+
 /* gsnfpca_check_sched_invariant
  * Check sched invariant at end of gsnfpca_schedule
  * gsnfpca.lock is grabbed by caller
@@ -649,25 +679,35 @@ void gsnfpca_check_sched_invariant()
 	if (!qtask)
 		return;
 
+	/* Top ready task has higher priority? */
+	entry = &__get_cpu_var(gsnfpca_cpu_entries);
+	task = entry->linked;
+	if (fp_higher_prio(qtask, task))
+	{
+		cpu_ok = 1;
+		preempted_task = task;
+	}
+
 	num_used_cp =
         count_set_bits(rt->used_cache_partitions & CACHE_PARTITIONS_MASK);
 	num_avail_cp = MAX_NUM_CACHE_PARTITIONS - num_used_cp;
 	for (i=0; i<NR_CPUS; i++)
 	{
 		entry = gsnfpca_cpus[i];
-		task = entry->scheduled;
+		/* entry may have picked a task but not schedule yet */
+		task = entry->linked;
 		if (!task || !is_realtime(task))
 		{
-			cpu_ok = 1;
-			preempted_cpu = i;
-			preempted_task = task;
+			//cpu_ok = 1;
+			//preempted_cpu = i;
+			//preempted_task = task;
 			continue;
 		}
 		if (fp_higher_prio(qtask, task))
 		{
-			cpu_ok = 1;
-			preempted_cpu = i;
-			preempted_task = task;
+			//cpu_ok = 1;
+			//preempted_cpu = i;
+			//preempted_task = task;
 			if (tsk_rt(task)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
 				num_avail_cp += tsk_rt(task)->task_params.num_cache_partitions;
 		}
@@ -690,7 +730,7 @@ void gsnfpca_check_sched_invariant()
 			TRACE_TASK(qtask, "[ERROR] can preempt NULL on P%d rt.cp=0x%x qtask.num_cp=%d\n",
 				   preempted_cpu,
 				   rt->used_cache_partitions, tsk_rt(qtask)->task_params.num_cache_partitions);
-		
+		gsnfpca_dump_cpus();
 	}
 
 	return;
