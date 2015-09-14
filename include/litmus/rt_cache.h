@@ -134,7 +134,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 				   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions,
 				   ~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK));
 		/* PL310 unlock cache */
-		unlock_cache_partitions(tsk_rt(task)->scheduled_on,
+		unlock_cache_partitions(tsk_rt(task)->linked_on,
 				tsk_rt(task)->job_params.cache_partitions);
 		rt->used_cache_partitions &= 
 			~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);

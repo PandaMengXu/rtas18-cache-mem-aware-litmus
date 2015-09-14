@@ -549,8 +549,6 @@ static void check_for_preemptions(void)
 				link_task_to_cpu(NULL, cpu_entry);
 				cpu_entry->preempting = task;
 				preempt(cpu_entry);
-			} else {
-				link_task_to_cpu(task, cpu_to_preempt);
 			}
 		}
 		INIT_LIST_HEAD(&tsk_rt(&standby_tasks)->standby_list);
@@ -559,7 +557,11 @@ static void check_for_preemptions(void)
 	/* requeue unfinished preempted task */
 	//if (requeue_preempted_job(cpu_to_preempt->linked))
 	//	requeue(cpu_to_preempt->linked);
-	//link_task_to_cpu(task, cpu_to_preempt);
+	
+	/* The preempted CPU may be preempted by cache or CPU only
+ 	 * Must be executed in both situation
+ 	 * Otherwise will fail to link the task and the task will never be sched */
+	link_task_to_cpu(task, cpu_to_preempt);
 
 	/* Set up the preempting task and invoke schedule on preempted CPU */
 	if (count_set_bits(cp_mask_to_use) != tsk_rt(task)->task_params.num_cache_partitions)
@@ -804,8 +806,10 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
  		 * Note: Even when we consider priority inversion,
  		 * 		 logic here is still correct.
  		 */
-		if (!exists || !is_realtime(entry->scheduled) ||
-			!(tsk_rt(entry->scheduled)->job_params.cache_state & CACHE_WILL_CLEAR))
+		if (!exists || !is_realtime(entry->scheduled) 
+//			|| !(tsk_rt(entry->scheduled)->job_params.cache_state 
+//			 & (CACHE_WILL_CLEAR | CACHE_WILL_USE)))
+			)
 		{
 			check_for_preemptions();
 		}
