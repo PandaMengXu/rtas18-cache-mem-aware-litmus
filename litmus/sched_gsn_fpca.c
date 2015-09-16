@@ -712,6 +712,7 @@ void gsnfpca_check_sched_invariant()
 	{
 		cpu_ok = 1;
 		preempted_task = task;
+		preempted_cpu = entry->cpu;
 	}
 
 	num_used_cp =
