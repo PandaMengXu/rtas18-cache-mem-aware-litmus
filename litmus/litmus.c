@@ -364,6 +364,13 @@ long litmus_admit_task(struct task_struct* tsk)
 			get_rt_relative_deadline(tsk));
 		retval = -EINVAL;
 		goto out;
+	} else {
+		TRACE_TASK(tsk,
+			"litmus admit: valid task parameters "
+			"(e = %lu, p = %lu, d = %lu cp=%d)\n",
+			get_exec_cost(tsk), get_rt_period(tsk),
+			get_rt_relative_deadline(tsk),
+			tsk_rt(tsk)->task_params.num_cache_partitions);
 	}
 
 	INIT_LIST_HEAD(&tsk_rt(tsk)->list);

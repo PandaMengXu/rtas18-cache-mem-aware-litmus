@@ -22,7 +22,7 @@
 #include <litmus/bheap.h>
 
 /* Uncomment when debugging timer races... */
-#if 0
+#if 1
 #define VTRACE_TASK TRACE_TASK
 #define VTRACE TRACE
 #else
@@ -59,7 +59,7 @@ static enum hrtimer_restart on_release_timer(struct hrtimer *timer)
 
 	TS_RELEASE_LATENCY(rh->release_time);
 
-	VTRACE("on_release_timer(0x%p) starts.\n", timer);
+	VTRACE("on_release_timer(0x%p) starts at %ldns.\n", timer, rh->release_time);
 
 	TS_RELEASE_START;
 

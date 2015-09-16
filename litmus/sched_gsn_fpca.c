@@ -123,7 +123,7 @@ cpu_entry_t* gsnfpca_cpus[NR_CPUS];
 static struct bheap_node gsnfpca_heap_node[NR_CPUS];
 static struct bheap      gsnfpca_cpu_heap;
 
-static rt_domain_t gsnfpca;
+rt_domain_t gsnfpca;
 #define gsnfpca_lock (gsnfpca.ready_lock)
 
 static struct task_struct standby_tasks;
@@ -323,6 +323,7 @@ static void check_for_preemptions(void)
 	}
 
 	//BUG_ON(gsnfpca_cpus[tsk_rt(task)->scheduled_on]->scheduled == task);
+	TRACE_TASK(task, "check_for_preemptions...\n");
 
 	/* Check if local cpu is idle first */
 	cpu_to_preempt = &__get_cpu_var(gsnfpca_cpu_entries);
@@ -539,13 +540,13 @@ static void check_for_preemptions(void)
 			struct task_struct *tsk_cur = list_entry(rt_cur, struct task_struct, rt_param); /*MX: If not correct, we add a upper link to task_struct */
 			cpu_entry_t *cpu_entry = gsnfpca_cpus[rt_cur->scheduled_on];
 			list_del_init(&rt_cur->standby_list);
-			/* requeue the linked task; scheduled task is requeued at schedule() */
-			if (requeue_preempted_job(cpu_entry->linked))
-				requeue(cpu_entry->linked);
-			/* update global view of cache partitions */
-			set_cache_config(rt, tsk_cur, CACHE_WILL_CLEAR);
 			if (cpu_entry->cpu != cpu_to_preempt->cpu)
 			{
+				/* requeue the linked task; scheduled task is requeued at schedule() */
+				if (requeue_preempted_job(cpu_entry->linked))
+					requeue(cpu_entry->linked);
+				/* update global view of cache partitions */
+				set_cache_config(rt, tsk_cur, CACHE_WILL_CLEAR);
 				link_task_to_cpu(NULL, cpu_entry);
 				cpu_entry->preempting = task;
 				preempt(cpu_entry);
@@ -560,7 +561,22 @@ static void check_for_preemptions(void)
 	
 	/* The preempted CPU may be preempted by cache or CPU only
  	 * Must be executed in both situation
- 	 * Otherwise will fail to link the task and the task will never be sched */
+ 	 * Otherwise will fail to link the task and the task will never be sched
+ 	 * NOTE: We must requeue the preempted task on preempted CPU, otherwise,
+ 	 * scheduler will lose track of the preempted task.
+ 	 * Unless task volunteerly yield CPU by finishing its job,
+ 	 * preempting CPU has the responsibility to add preempted task back to
+ 	 * ready_queue since preempted task must be runnable 
+ 	 * BUG FIX: A RT task may be preempted only by CPU when system has enough
+ 	 * free cache! Preempting task take free cache, release cache of 
+ 	 * preempted task AND requeue the preempted task */
+	if (cpu_to_preempt->linked && is_realtime(cpu_to_preempt->linked))
+	{
+		if (requeue_preempted_job(cpu_to_preempt->linked))
+			requeue(cpu_to_preempt->linked);
+		/* update global view of cache partitions */
+		set_cache_config(rt, cpu_to_preempt->linked, CACHE_WILL_CLEAR);
+	}
 	link_task_to_cpu(task, cpu_to_preempt);
 
 	/* Set up the preempting task and invoke schedule on preempted CPU */
@@ -579,11 +595,20 @@ static void check_for_preemptions(void)
 	return;
 }
 
-/* gsnfpca_job_arrival: task is either resumed or released */
+/* gsnfpca_job_arrival: task is either resumed or released
+ * We MUST unlock the cache of the task when new job arrives
+ * Otherwise we may leak cache because new job may be assigned
+ * for different cache partitions and old cache partitions are leaked
+ * Really? */
 static noinline void gsnfpca_job_arrival(struct task_struct* task)
 {
 	BUG_ON(!task);
 
+	TRACE_TASK(task, "gsnfpca_job_arrival %s/%d/%d\n",
+			   task->comm, task->pid,
+			   tsk_rt(task)->job_params.job_no);
+	/* task should not have locked any cache either resumed or released */
+	//set_cache_config(rt, task, CACHE_WILL_CLEAR);
 	requeue(task);
 	check_for_preemptions();
 }
@@ -592,6 +617,7 @@ static void gsnfpca_release_jobs(rt_domain_t* rt, struct bheap* tasks)
 {
 	unsigned long flags;
 
+	TRACE("gsnfpca_release_jobs\n");
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
 
 	__merge_ready(rt, tasks);
@@ -1068,34 +1094,34 @@ static void gsnfpca_task_exit(struct task_struct * t)
 /*
  *	Deactivate current task until the beginning of the next period.
  */
-//long gsnfpca_complete_job(void)
-//{
-//	/* Mark that we do not excute anymore */
-//	tsk_rt(current)->completed = 1;
-//	set_cache_config(&gsnfpca, current, CACHE_CLEARED);
-//	/* call schedule, this will return when a new job arrives
-//	 * it also takes care of preparing for the next release
-//	 */
-//	//schedule();
-//	check_for_preemption();
-//	return 0;
-//}
+long gsnfpca_complete_job(void)
+{
+	TRACE_TASK(current, "%s/%d/%d completed\n",
+			   current->comm, current->pid, tsk_rt(current)->job_params.job_no);
+	/* Mark that we do not excute anymore */
+	tsk_rt(current)->completed = 1;
+	//set_cache_config(&gsnfpca, current, CACHE_CLEARED);
+	/* call schedule, this will return when a new job arrives
+	 * it also takes care of preparing for the next release
+	 */
+	schedule();
+	//check_for_preemption();
+	return 0;
+}
 
 static long gsnfpca_admit_task(struct task_struct* tsk)
 {
-	INIT_LIST_HEAD(&tsk_rt(tsk)->standby_list);
-    TRACE_TASK(tsk, "is admitted unconditionally, num_cp=%d, job.cp_mask=0x%x (should be 0x0)\n",
-			   tsk_rt(tsk)->task_params.num_cache_partitions,
-			   tsk_rt(tsk)->job_params.cache_partitions);
-    return 0;
-/*
 	if (litmus_is_valid_fixed_prio(get_priority(tsk)))
-	    return 0;
-    else {
+	{
+		INIT_LIST_HEAD(&tsk_rt(tsk)->standby_list);
+    	TRACE_TASK(tsk, "is admitted, num_cp=%d, job.cp_mask=0x%x (should be 0x0)\n",
+				   tsk_rt(tsk)->task_params.num_cache_partitions,
+				   tsk_rt(tsk)->job_params.cache_partitions);
+		return 0;
+	} else {
         TRACE_TASK(tsk, "is rejected\n");
         return -EINVAL;
-    }
-*/
+	}
 }
 
 #ifdef CONFIG_LITMUS_LOCKING
@@ -1510,7 +1536,7 @@ static struct sched_plugin gsn_fpca_plugin __cacheline_aligned_in_smp = {
 	.plugin_name		= "GSN-FPCA",
 	.finish_switch		= gsnfpca_finish_switch,
 	.task_new		= gsnfpca_task_new,
-	.complete_job		= complete_job,
+	.complete_job		= gsnfpca_complete_job,
 	.task_exit		= gsnfpca_task_exit,
 	.schedule		= gsnfpca_schedule,
 	.task_wake_up		= gsnfpca_task_wake_up,

@@ -8,9 +8,22 @@
 #include <linux/mutex.h>
 #include <linux/time.h>
 
+#include <linux/percpu.h>
+#include <linux/sched.h>
+#include <litmus/litmus.h>
+#include <litmus/jobs.h>
+#include <litmus/sched_plugin.h>
+#include <litmus/fp_common.h>
+#include <litmus/sched_trace.h>
+#include <litmus/trace.h>
+
+#include <litmus/preempt.h>
 #include <litmus/litmus_proc.h>
+#include <litmus/rt_domain.h>
+
 #include <litmus/sched_trace.h>
 #include <litmus/cache_proc.h>
+#include <litmus/budget.h>
 
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/cacheflush.h>
@@ -154,6 +167,13 @@ int lock_all;
 int nr_lockregs;
 static raw_spinlock_t cache_lock;
 static raw_spinlock_t prefetch_lock;
+
+int pid;
+int rt_pid_min;
+int rt_pid_max;
+uint16_t new_cp_status;
+uint16_t rt_cp_min;
+uint16_t rt_cp_max;
 
 extern void l2x0_flush_all(void);
 
@@ -388,6 +408,84 @@ int way_partition_handler(struct ctl_table *table, int write, void __user *buffe
 
 out:
 	mutex_unlock(&lockdown_proc);
+	return ret;
+}
+
+int cache_status_handler(struct ctl_table *table, int write, void __user *buffer,
+		size_t *lenp, loff_t *ppos)
+{
+	int ret = 0;
+	rt_domain_t *rt = &gsnfpca;
+	
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if (ret)
+		goto out;
+
+	if (write) {
+		printk("Change rt.used_cache_partitions to 0x%x:\n", new_cp_status);
+		raw_spin_lock(&rt->ready_lock);
+		rt->used_cache_partitions = new_cp_status;
+		printk("New rt.used_cache_partitions 0x%x:\n", rt->used_cache_partitions);
+		raw_spin_unlock(&rt->ready_lock);
+	} else {
+		raw_spin_lock(&rt->ready_lock);
+		printk("rt.used_cache_partitions 0x%x:\n", rt->used_cache_partitions);
+		raw_spin_unlock(&rt->ready_lock);
+	}
+	
+out:
+	return ret;
+}
+
+int task_info_handler(struct ctl_table *table, int write, void __user *buffer,
+		size_t *lenp, loff_t *ppos)
+{
+	int ret = 0;
+	struct task_struct *task;
+	int out_of_time, sleep, np, blocks, on_release;
+	rt_domain_t *rt = &gsnfpca;
+	
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if (ret)
+		goto out;
+
+	if (write) {
+		printk("task pid %d\n", pid);
+		if (pid < 1 || pid > 10000)
+		{
+			printk("valid pid:1-10000\n");
+			goto out;
+		}
+		task = pid_task(find_vpid(pid), PIDTYPE_PID);
+		if (!task)
+		{
+			printk("get_pid_task: pid is null\n");
+		}
+		blocks      = !is_running(task);
+		out_of_time = budget_enforced(task)
+			&& budget_exhausted(task);
+		np 	    = is_np(task);
+		sleep	    = is_completed(task);
+		on_release = !list_empty(&tsk_rt(task)->list);
+		printk( "task %s/%d/%d = (%lld %lld %d)\n"
+		   "blocks:%d out_of_time:%d np:%d sleep:%d "
+		   "state:%d sig:%d on_release_q:%d cp:0x%x rt.cp:0x%x "
+		   "scheduled_on:%ld linked_on:%d "
+		   "release_at:%lldns now:%lldns\n",
+		   task->comm, task->pid, tsk_rt(task)->job_params.job_no,
+		   tsk_rt(task)->task_params.period,
+		   tsk_rt(task)->task_params.exec_cost,
+		   tsk_rt(task)->task_params.num_cache_partitions,
+		   blocks, out_of_time, np, sleep,
+		   task->state, signal_pending(task),
+		   on_release,
+		   tsk_rt(task)->job_params.cache_partitions,
+		   rt->used_cache_partitions,
+		   tsk_rt(task)->scheduled_on, tsk_rt(task)->linked_on,
+		   get_release(task), litmus_clock());
+	}
+
+out:
 	return ret;
 }
 
@@ -680,6 +778,24 @@ static struct ctl_table cache_table[] =
 		.data		= &l2_data_prefetch_proc,
 		.maxlen		= sizeof(l2_data_prefetch_proc),
 	},
+	{
+		.procname	= "task_info",
+		.mode		= 0666,
+		.proc_handler	= task_info_handler,
+		.data		= &pid,
+		.maxlen		= sizeof(pid),
+		.extra1		= &rt_pid_min,
+		.extra2		= &rt_pid_max,
+	},	
+	{
+		.procname	= "rt_used_cp",
+		.mode		= 0666,
+		.proc_handler	= cache_status_handler,
+		.data		= &new_cp_status,
+		.maxlen		= sizeof(pid),
+		.extra1		= &rt_cp_min,
+		.extra2		= &rt_cp_max,
+	},	
 	{ }
 };
 
@@ -708,6 +824,10 @@ static int __init litmus_sysctl_init(void)
 
 	way_partition_min = 0x00000000;
 	way_partition_max = 0x0000FFFF;
+	rt_pid_min = 1;
+	rt_pid_max = 10000;
+	rt_cp_min = 0x0;
+	rt_cp_max = 0xFFFF;
 	
 out:
 	return ret;

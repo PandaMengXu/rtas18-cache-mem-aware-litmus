@@ -90,8 +90,8 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 static inline void 
 set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 {
-	TRACE_TASK(task, "Before change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
-				rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
+//	TRACE_TASK(task, "Before change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
+//				rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
 	
 	/* Check cache_state */
 	if (s == CACHE_CLEARED)
@@ -134,7 +134,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 				   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions,
 				   ~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK));
 		/* PL310 unlock cache */
-		unlock_cache_partitions(tsk_rt(task)->linked_on,
+		unlock_cache_partitions(tsk_rt(task)->scheduled_on,
 				tsk_rt(task)->job_params.cache_partitions);
 		rt->used_cache_partitions &= 
 			~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
@@ -159,8 +159,8 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 
 	/* Change cache_state */
 	set_cache_state(task, s);
-	TRACE_TASK(task, "After change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
-				rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
+//	TRACE_TASK(task, "After change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
+//				rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
 }
 
 #endif

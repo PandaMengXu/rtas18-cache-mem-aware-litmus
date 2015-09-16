@@ -9,6 +9,8 @@
 
 #include <litmus/litmus.h>
 #include <litmus/litmus_proc.h>
+#include <litmus/rt_domain.h>
+#include <litmus/budget.h>
 
 #include <litmus/clustered.h>
 
@@ -32,11 +34,48 @@ int count_tasks_waiting_for_release(void);
 
 static int litmus_stats_proc_show(struct seq_file *m, void *v)
 {
-        seq_printf(m,
-		   "real-time tasks   = %d\n"
-		   "ready for release = %d\n",
-		   atomic_read(&rt_task_count),
-		   count_tasks_waiting_for_release());
+	rt_domain_t *rt = &gsnfpca;
+    int out_of_time, sleep, preempt, np, exists, blocks;
+	struct task_struct *task;
+
+	task  =  __peek_ready(rt);
+	if (!rt || !task)
+	{
+		seq_printf(m,
+	   	"real-time tasks   = %d\n"
+	   	"ready for release = %d\n"
+		"rt=0x%x, task=0x%x\n",
+	   	atomic_read(&rt_task_count),
+	   	count_tasks_waiting_for_release(),
+		(void *) rt, (void *) task);
+		return 0;
+	}
+
+    exists      = task != NULL;
+    blocks      = exists && !is_running(task);
+    out_of_time = exists && budget_enforced(task)
+        && budget_exhausted(task);
+    np      = exists && is_np(task);
+    sleep       = exists && is_completed(task);
+    preempt     = -1;
+
+	seq_printf(m,
+	   "real-time tasks   = %d\n"
+	   "ready for release = %d\n"
+	   "top ready task %s%d%d = (%ld %ld %d)\n"
+	   "blocks:%d out_of_time:%d np:%d sleep:%d preempt:%d "
+       "state:%d sig:%d cp:0x%x rt.cp:0x%x\n",
+	   atomic_read(&rt_task_count),
+	   count_tasks_waiting_for_release(),
+	   task->comm, task->pid, tsk_rt(task)->job_params.job_no,
+	   (long) tsk_rt(task)->task_params.period,
+	   (long) tsk_rt(task)->task_params.exec_cost,
+	   tsk_rt(task)->task_params.num_cache_partitions,
+       blocks, out_of_time, np, sleep, preempt,
+       task->state, signal_pending(task),
+       tsk_rt(task)->job_params.cache_partitions,
+       rt->used_cache_partitions);
+
 	return 0;
 }
 

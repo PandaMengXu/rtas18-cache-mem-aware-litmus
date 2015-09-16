@@ -185,4 +185,5 @@ static inline int jobs_pending(rt_domain_t* rt)
 	return ret;
 }
 
+extern rt_domain_t gsnfpca;
 #endif
