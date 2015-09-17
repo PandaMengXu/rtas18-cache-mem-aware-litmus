@@ -366,9 +366,11 @@ static void check_for_preemptions(void)
 				num_cp_to_use += 1;
 			}
 		}
-		/* Find the lowest priority CPU to preempt */
+		/* Find the lowest priority CPU to preempt
+ 		 * We should use linked here since a preempting task may be linked
+ 		 * but have not be executed on the CPU */
 		entry = lowest_prio_cpu();
-		cur = entry->scheduled;
+		cur = entry->linked;
 
 		if (!cur || !is_realtime(cur) || fp_higher_prio(task, cur))
 		{
@@ -416,7 +418,7 @@ static void check_for_preemptions(void)
 
 			if (!entry)
 				break;
-			cur = entry->scheduled;
+			cur = entry->linked;
 			standby_cpus[entry->cpu] = entry;
 			remove_cpu(entry);
 			if (!cur || !is_realtime(cur))
@@ -433,6 +435,7 @@ static void check_for_preemptions(void)
 			if (!(tsk_rt(cur)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE)))
 			{
 				cpu++;
+				TRACE_TASK(cur, "[BUG] was linked but is not in CACHE_WILL_USE or CACHE_IN_USE\n");
 				continue;
 			}
 			if (!fp_higher_prio(task, cur))
@@ -531,7 +534,7 @@ static void check_for_preemptions(void)
 		list_for_each_safe(iter, tmp, &tsk_rt(&preempted_tasks)->standby_list) {
 			struct rt_param *rt_cur = list_entry(iter, struct rt_param, standby_list);
 			struct task_struct *tsk_cur = list_entry(rt_cur, struct task_struct, rt_param); /* correct */
-			cpu_entry_t *cpu_entry = gsnfpcanw_cpus[rt_cur->scheduled_on];
+			cpu_entry_t *cpu_entry = gsnfpcanw_cpus[rt_cur->linked_on];
 			list_del_init(&rt_cur->standby_list);
 			if (cpu_entry->cpu != cpu_to_preempt->cpu)
 			{
