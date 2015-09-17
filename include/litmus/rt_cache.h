@@ -48,7 +48,7 @@ lock_cache_partitions(int cpu, uint16_t cp_mask)
 {
 	if (cpu == NO_CPU)
 	{
-		TRACE("[ERROR] try to lock 0x%x on NO_CPU\n", cp_mask);
+		TRACE("[BUG] try to lock 0x%x on NO_CPU\n", cp_mask);
 	}
 	__lock_cache_ways_to_cpu(cpu, cp_mask);
 	return;
@@ -62,7 +62,7 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 {
 	if (cpu == NO_CPU)
 	{
-		TRACE("[ERROR] try to unlock 0x%x on NO_CPU\n", cp_mask);
+		TRACE("[BUG] try to unlock 0x%x on NO_CPU\n", cp_mask);
 	}
 	__unlock_cache_ways_to_cpu(cpu);
 	return;
