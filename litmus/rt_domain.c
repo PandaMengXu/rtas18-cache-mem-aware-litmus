@@ -22,7 +22,7 @@
 #include <litmus/bheap.h>
 
 /* Uncomment when debugging timer races... */
-#if 1
+#if 0
 #define VTRACE_TASK TRACE_TASK
 #define VTRACE TRACE
 #else

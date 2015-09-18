@@ -967,7 +967,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 
 	/* Check correctness of scheduler
   	 * NOTE: TODO: avoid such check in non-debug mode */
-	gsnfpca_check_sched_invariant();
+	//gsnfpca_check_sched_invariant();
 
 	raw_spin_unlock(&gsnfpca_lock);
 
