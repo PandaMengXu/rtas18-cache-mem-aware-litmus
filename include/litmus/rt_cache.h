@@ -124,7 +124,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
  	 */
 	//if (s == CACHE_CLEARED)
 	if (s == CACHE_WILL_CLEAR &&
-		!(tsk_rt(task)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED)))
+		(tsk_rt(task)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE)))
 	{
 		/* job.cp_mask should all in rt.used_cp_mask */
 		if ((~rt->used_cache_partitions) & tsk_rt(task)->job_params.cache_partitions)
@@ -133,8 +133,10 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 		TRACE_TASK(task, "rt.used_cp=0x%x, job.cp=0x%x ~job.cp=0x%x\n",
 				   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions,
 				   ~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK));
-		/* PL310 unlock cache */
-		unlock_cache_partitions(tsk_rt(task)->scheduled_on,
+		/* PL310 unlock cache
+ 		 * A task may be preempted when the task have been linked to a CPU but
+ 		 * have not been scheduled on the CPU */
+		unlock_cache_partitions(tsk_rt(task)->linked_on,
 				tsk_rt(task)->job_params.cache_partitions);
 		rt->used_cache_partitions &= 
 			~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
@@ -145,7 +147,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 	}
 	//if (s == CACHE_IN_USE)
 	if (s == CACHE_WILL_USE &&
-		!(tsk_rt(task)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE)))
+		(tsk_rt(task)->job_params.cache_state & (CACHE_INIT | CACHE_WILL_CLEAR | CACHE_CLEARED)))
 	{
 		if (tsk_rt(task)->job_params.cache_partitions & rt->used_cache_partitions)
 			TRACE_TASK(task, "[ERROR] Lock a cp already used rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",

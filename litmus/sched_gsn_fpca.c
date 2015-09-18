@@ -821,7 +821,10 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	/* If a task blocks we have no choice but to reschedule.
 	 */
 	if (blocks)
+	{
+		set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 		unlink(entry->scheduled);
+	}
 
 	/* Request a sys_exit_np() call if we would like to preempt but cannot.
 	 * We need to make sure to update the link structure anyway in case
@@ -829,6 +832,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	 * hurt.
 	 */
 	if (np && (out_of_time || preempt || sleep)) {
+		set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 		unlink(entry->scheduled);
 		request_exit_np(entry->scheduled);
 	}
@@ -1036,10 +1040,10 @@ static void gsnfpca_task_block(struct task_struct *t)
 	TRACE_TASK(t, "block at %llu, cp_mask=0x%x\n",
 			   litmus_clock(), tsk_rt(t)->job_params.cache_partitions);
 
-	/* unlink if necessary */
+	/* unlink if necessary, Always clear cache before unlink */
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
-	unlink(t);
 	set_cache_config(rt, t, CACHE_WILL_CLEAR);
+	unlink(t);
 	TRACE_TASK(t, "blocked, rt.used_cp_mask=0x%x should not include job.cp_mask=0x%x\n",
 			   rt->used_cache_partitions, tsk_rt(t)->job_params.cache_partitions);
 	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
