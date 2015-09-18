@@ -796,7 +796,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 {
 	rt_domain_t *rt = &gsnfpca;
 	cpu_entry_t* entry = &__get_cpu_var(gsnfpca_cpu_entries);
-	int out_of_time, sleep, preempt, np, exists, blocks, finish;
+	int out_of_time, sleep, preempt, np, exists, blocks, finish, prev_cache_state;
 	struct task_struct* next = NULL;
 	cache_state_t cache_state_prev;
 
@@ -827,6 +827,13 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	preempt     = entry->scheduled != entry->linked;
 	cache_state_prev = tsk_rt(prev)->job_params.cache_state;
 	finish 	= 0;
+	if (is_realtime(prev))
+	{
+		prev_cache_state = tsk_rt(prev)->job_params.cache_state;
+	} else
+	{
+		prev_cache_state = CACHE_INVALID;
+	}
 
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(prev, "invoked gsnfpca_schedule.\n");
@@ -907,7 +914,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 			TRACE_TASK(entry->scheduled, "scheduled_on = NO_CPU, rt->used_cp_mask=0x%x should exclude job.cp_mask=0x%x\n",
 					   rt->used_cache_partitions, entry->scheduled->rt_param.job_params.cache_partitions);
 			/* Trace when preempted via cache by another CPU */
-			if (!blocks && !entry->linked && !finish)
+			if (!blocks && !entry->linked && !finish 
+				&& !(prev_cache_state & CACHE_INIT))
 			{
 				if (!entry->preempting)
 				{
@@ -1099,6 +1107,8 @@ static void gsnfpca_task_exit(struct task_struct * t)
 	}
 	TRACE_TASK(t, "exit, used_cp_mask=0x%x cleared by job.cp_mask=0x%x\n",
 			   rt->used_cache_partitions, tsk_rt(t)->job_params.cache_partitions);
+	/* schedule point when task is blocked */
+	check_for_preemptions();
 	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
 
 	BUG_ON(!is_realtime(t));

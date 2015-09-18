@@ -18,6 +18,7 @@ typedef enum cache_state {
 					* other tasks, reserved cache partitions will be unlocked */
 	CACHE_CLEARED 	 = (1 << 4),  /* Task cache partitions have been unlocked by
 					* hardware */
+	CACHE_INVALID	= (1 << 5),   /* Invalid cache state */
 } cache_state_t;
 
 static inline int lt_after(lt_t a, lt_t b)
