@@ -832,6 +832,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	 * hurt.
 	 */
 	if (np && (out_of_time || preempt || sleep)) {
+		/* Always clear cache before unlink */
 		set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 		unlink(entry->scheduled);
 		request_exit_np(entry->scheduled);

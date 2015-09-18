@@ -301,8 +301,9 @@ static cpu_entry_t* gsnfpcanw_get_nearest_available_cpu(cpu_entry_t *start)
 }
 #endif
 
-/* check for any necessary preemptions under gFPca^nw */
-static void check_for_preemptions(void)
+/* Check if top task in ready_queue can preempt a CPU
+ * Remove the top task from ready_queue if preemption occurs  */
+static inline int check_for_preemptions_helper(void)
 {
 	rt_domain_t *rt = &gsnfpcanw;
 	struct task_struct *task;
@@ -316,6 +317,7 @@ static void check_for_preemptions(void)
 	cpu_entry_t *cpu_to_preempt = NULL;
 	int i;
 	struct list_head *iter, *tmp;
+	int has_preemption = 0;
 
 	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
@@ -522,11 +524,13 @@ static void check_for_preemptions(void)
 	{
 		TRACE_TASK(task, "Cannot preempt, cache_ok=%d, cpu_ok=%d, rt.used_cp_mask=0x%x, need %d cps\n",
 				   cache_ok, cpu_ok, rt->used_cache_partitions, tsk_rt(task)->task_params.num_cache_partitions);
+		has_preemption = 0;
 		goto out;
 	}
 	/* Preempt preempted tasks */
 	BUG_ON(!cpu_to_preempt);
 	/* Must take_ready before we requeue any task */
+	has_preemption = 1;
 	task = __take_ready(&gsnfpcanw);
 	BUG_ON(!task);
 	if (!only_take_idle_cache)
@@ -585,6 +589,27 @@ static void check_for_preemptions(void)
 			   rt->used_cache_partitions);
 	preempt(cpu_to_preempt);
  out:
+	return has_preemption;
+}
+
+/* check_for_preemptions for all possible CPUs for gFPca^nw */
+static void check_for_preemptions(void)
+{
+	int i = 0;
+	int has_preemption = 0;
+
+	for (i = 0; i <= NR_CPUS + 1; i++)
+	{
+		has_preemption = check_for_preemptions_helper();
+		if (has_preemption == 0)
+			break;
+	}
+
+	if (i == NR_CPUS + 1)
+	{
+		TRACE("[BUG] ready_queue is not sorted properly.\n");
+	}
+
 	return;
 }
 
