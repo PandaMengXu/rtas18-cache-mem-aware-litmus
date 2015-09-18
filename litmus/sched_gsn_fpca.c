@@ -296,8 +296,9 @@ static cpu_entry_t* gsnfpca_get_nearest_available_cpu(cpu_entry_t *start)
 }
 #endif
 
-/* check for any necessary preemptions under gFPca */
-static void check_for_preemptions(void)
+/* Check if top task in ready_queue can preempt a CPU
+ * Remove the top task from ready_queue if preemption occurs  */
+static inline int check_for_preemptions_helper(void)
 {
 	rt_domain_t *rt = &gsnfpca;
 	struct task_struct *task;
@@ -311,6 +312,7 @@ static void check_for_preemptions(void)
 	cpu_entry_t *cpu_to_preempt = NULL;
 	int i;
 	struct list_head *iter, *tmp;
+	int has_preemption = 0;
 
 	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
@@ -517,11 +519,13 @@ static void check_for_preemptions(void)
 	{
 		TRACE_TASK(task, "Cannot preempt, cache_ok=%d, cpu_ok=%d, rt.used_cp_mask=0x%x, need %d cps\n",
 				   cache_ok, cpu_ok, rt->used_cache_partitions, tsk_rt(task)->task_params.num_cache_partitions);
+		has_preemption = 0;
 		goto out;
 	}
 	/* Preempt preempted tasks */
 	BUG_ON(!cpu_to_preempt);
 	/* Must take_ready before we requeue any task */
+	has_preemption = 1;
 	task = __take_ready(&gsnfpca);
 	BUG_ON(!task);
 	if (!only_take_idle_cache)
@@ -580,6 +584,27 @@ static void check_for_preemptions(void)
 			   rt->used_cache_partitions);
 	preempt(cpu_to_preempt);
  out:
+	return has_preemption;
+}
+
+/* check_for_preemptions for all possible CPUs for gFPca */
+static void check_for_preemptions(void)
+{
+	int i = 0;
+	int has_preemption = 0;
+
+	for (i = 0; i <= NR_CPUS + 1; i++)
+	{
+		has_preemption = check_for_preemptions_helper();
+		if (has_preemption == 0)
+			break;
+	}
+
+	if (i == NR_CPUS + 1)
+	{
+		TRACE("[BUG] ready_queue is not sorted properly.\n");
+	}
+
 	return;
 }
 
@@ -882,7 +907,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 			TRACE_TASK(entry->scheduled, "scheduled_on = NO_CPU, rt->used_cp_mask=0x%x should exclude job.cp_mask=0x%x\n",
 					   rt->used_cache_partitions, entry->scheduled->rt_param.job_params.cache_partitions);
 			/* Trace when preempted via cache by another CPU */
-			if (!entry->linked && !finish)
+			if (!blocks && !entry->linked && !finish)
 			{
 				if (!entry->preempting)
 				{
@@ -1047,6 +1072,8 @@ static void gsnfpca_task_block(struct task_struct *t)
 	unlink(t);
 	TRACE_TASK(t, "blocked, rt.used_cp_mask=0x%x should not include job.cp_mask=0x%x\n",
 			   rt->used_cache_partitions, tsk_rt(t)->job_params.cache_partitions);
+	/* schedule point when task is blocked */
+	check_for_preemptions();
 	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
 
 	BUG_ON(!is_realtime(t));
