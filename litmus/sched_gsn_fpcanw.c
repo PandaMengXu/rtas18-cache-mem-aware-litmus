@@ -124,6 +124,8 @@ DEFINE_PER_CPU(cpu_entry_t, gsnfpcanw_cpu_entries);
 
 cpu_entry_t* gsnfpcanw_cpus[NR_CPUS];
 
+DECLARE_PER_CPU(cpu_cache_entry_t, cpu_cache_entries);
+
 /* the cpus queue themselves according to priority in here */
 static struct bheap_node gsnfpcanw_heap_node[NR_CPUS];
 static struct bheap      gsnfpcanw_cpu_heap;
@@ -1259,6 +1261,7 @@ static int __init init_gsn_fpcanw(void)
 {
 	int cpu;
 	cpu_entry_t *entry;
+	cpu_cache_entry_t *cache_entry;
 
 	INIT_LIST_HEAD(&tsk_rt(&standby_tasks)->standby_list);
 	memset(&standby_cpus, 0, sizeof(standby_cpus));
@@ -1271,10 +1274,17 @@ static int __init init_gsn_fpcanw(void)
 		entry->cpu 	 = cpu;
 		entry->hn        = &gsnfpcanw_heap_node[cpu];
 		bheap_node_init(&entry->hn, entry);
+		/* initialize CPU cache status */
+		cache_entry = &per_cpu(cpu_cache_entries, cpu);
+		TRACE("[P%d] initialize cpu_entry: cpu=%d used_cp=0x%x initialized to 0x0\n",
+			  cpu, cache_entry->cpu, cache_entry->used_cp);
+		cache_entry->cpu = cpu;
+		cache_entry->used_cp = 0;
 	}
 	fp_domain_init(&gsnfpcanw, NULL, gsnfpcanw_release_jobs);
 	gsnfpcanw.used_cache_partitions = 0;
 	TRACE("init_gsn_fpcanw: rt.used_cp_mask=0x%x\n", gsnfpcanw.used_cache_partitions);
+	TRACE("[WARN] DO NOT USE GSN-FPCANW NOW! WILL REWRITE\n");
 	return register_sched_plugin(&gsn_fpca_plugin);
 }
 

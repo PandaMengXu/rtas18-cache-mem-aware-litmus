@@ -119,6 +119,8 @@ DEFINE_PER_CPU(cpu_entry_t, gsnfpca_cpu_entries);
 
 cpu_entry_t* gsnfpca_cpus[NR_CPUS];
 
+DECLARE_PER_CPU(cpu_cache_entry_t, cpu_cache_entries);
+
 /* the cpus queue themselves according to priority in here */
 static struct bheap_node gsnfpca_heap_node[NR_CPUS];
 static struct bheap      gsnfpca_cpu_heap;
@@ -1580,6 +1582,7 @@ static int __init init_gsn_fpca(void)
 {
 	int cpu;
 	cpu_entry_t *entry;
+	cpu_cache_entry_t *cache_entry;
 
 	INIT_LIST_HEAD(&tsk_rt(&standby_tasks)->standby_list);
 	memset(&standby_cpus, 0, sizeof(standby_cpus));
@@ -1592,6 +1595,11 @@ static int __init init_gsn_fpca(void)
 		entry->cpu 	 = cpu;
 		entry->hn        = &gsnfpca_heap_node[cpu];
 		bheap_node_init(&entry->hn, entry);
+		cache_entry = &per_cpu(cpu_cache_entries, cpu);
+		TRACE("[P%d] gsn_fpca: cpu:%d->%d used_cpu:%d->0\n",
+			  cpu, cache_entry->cpu, cpu, cache_entry->used_cp);
+		cache_entry->cpu = cpu;
+		cache_entry->used_cp = 0;
 	}
 	fp_domain_init(&gsnfpca, NULL, gsnfpca_release_jobs);
 	gsnfpca.used_cache_partitions = 0;
