@@ -291,7 +291,7 @@ int lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 
 int __unlock_cache_ways_to_cpu(int cpu)
 {
-	return __lock_cache_ways_to_cpu(cpu, UNLOCK_ALL);
+	return __lock_cache_ways_to_cpu(cpu, LOCK_ALL);
 }
 
 int unlock_cache_ways_to_cpu(int cpu)
