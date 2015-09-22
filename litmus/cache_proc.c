@@ -291,7 +291,7 @@ int lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 
 int __unlock_cache_ways_to_cpu(int cpu)
 {
-	return __lock_cache_ways_to_cpu(cpu, 0xffff);
+	return __lock_cache_ways_to_cpu(cpu, 0x0);
 }
 
 int unlock_cache_ways_to_cpu(int cpu)
@@ -304,6 +304,32 @@ int unlock_cache_ways_to_cpu(int cpu)
 
 	mutex_unlock(&lockdown_proc);
 
+	return ret;
+}
+
+int __get_used_cache_ways_on_cpu(int cpu, uint16_t *cp_mask)
+{
+	int ret = 0;
+	unsigned long flags;
+	u32 ways_mask_i, ways_mask_d;
+
+	if (cpu < 0 || cpu >= NR_CPUS) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	local_irq_save(flags);
+	ways_mask_d = readl_relaxed(ld_d_reg(cpu));
+	ways_mask_i = readl_relaxed(ld_i_reg(cpu));
+	local_irq_restore(flags);
+
+	if (ways_mask_i != ways_mask_d) {
+		TRACE("Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
+		printk(KERN_ERR "Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
+		ret = ways_mask_i;
+	}
+	*cp_mask = ((~ways_mask_d) & CACHE_PARTITIONS_MASK);
+out:
 	return ret;
 }
 
@@ -467,7 +493,7 @@ int task_info_handler(struct ctl_table *table, int write, void __user *buffer,
 		np 	    = is_np(task);
 		sleep	    = is_completed(task);
 		on_release = !list_empty(&tsk_rt(task)->list);
-		printk( "task %s/%d/%d = (%lld %lld %d)\n"
+		printk("task %s/%d/%d = (%lld %lld %d)\n"
 		   "blocks:%d out_of_time:%d np:%d sleep:%d "
 		   "state:%d sig:%d on_release_q:%d cp:0x%x rt.cp:0x%x "
 		   "scheduled_on:%ld linked_on:%d "

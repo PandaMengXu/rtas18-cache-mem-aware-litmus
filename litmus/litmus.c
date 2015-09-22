@@ -206,6 +206,62 @@ asmlinkage long sys_get_rt_task_param(pid_t pid, struct rt_task __user * param)
 }
 
 /*
+ * Getter of RT params of a job
+ *   returns EINVAL if param or pid is NULL
+ *   returns ESRCH  if pid does not correspond to a valid task
+ *   returns EFAULT if copying of parameters has failed.
+ *
+ *   find_task_by_vpid() assumes that we are in the same namespace of the
+ *   target.
+ */
+asmlinkage long sys_get_rt_job_param(pid_t pid, struct rt_job __user * param)
+{
+	int retval = -EINVAL;
+	struct task_struct *source;
+	struct rt_job lp;
+	if (param == 0 || pid < 0)
+		goto out;
+	read_lock(&tasklist_lock);
+	if (!(source = find_task_by_vpid(pid))) {
+		retval = -ESRCH;
+		goto out_unlock;
+	}
+	lp = source->rt_param.job_params;
+	read_unlock(&tasklist_lock);
+	/* Do copying outside the lock */
+	retval =
+	    copy_to_user(param, &lp, sizeof(lp)) ? -EFAULT : 0;
+	return retval;
+      out_unlock:
+	read_unlock(&tasklist_lock);
+      out:
+	return retval;
+
+}
+
+asmlinkage long sys_mark_event(pid_t pid, int __user event_id, int __user data)
+{
+	int retval = -EINVAL;
+	struct task_struct *source;
+	if (pid < 0)
+		goto out;
+	read_lock(&tasklist_lock);
+	if (!(source = find_task_by_vpid(pid))) {
+		retval = -ESRCH;
+		goto out_unlock;
+	}
+	read_unlock(&tasklist_lock);
+	TRACE_TASK(source, "[MARK] %lld event:%d, data:%d\n",
+			   litmus_clock(), event_id, data);
+	return retval;
+      out_unlock:
+	read_unlock(&tasklist_lock);
+      out:
+	return retval;
+
+}
+
+/*
  *	This is the crucial function for periodic task implementation,
  *	It checks if a task is periodic, checks if such kind of sleep
  *	is permitted and calls plugin-specific sleep, which puts the

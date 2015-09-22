@@ -993,10 +993,44 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 static void gsnfpca_finish_switch(struct task_struct *prev)
 {
 	cpu_entry_t* 	entry = &__get_cpu_var(gsnfpca_cpu_entries);
+	int16_t cp_mask;
+	int cpu;
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
 	if (is_realtime(current))
+	{
 		TRACE_TASK(current, "lock cache ways 0x%x\n", tsk_rt(current)->job_params.cache_partitions);
+		if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
+		{
+			cp_mask = tsk_rt(current)->job_params.cache_partitions;
+			cpu = tsk_rt(current)->linked_on;
+			if (tsk_rt(current)->task_params.num_cache_partitions != 0 &&
+			    tsk_rt(current)->job_params.cache_partitions == 0)
+			{
+				TRACE_TASK(current, "[BUG] assigned cp=0x%x should not be 0\n",
+					tsk_rt(current)->job_params.cache_partitions);
+			}
+			lock_cache_partitions(cpu, cp_mask);
+		} else {
+			TRACE_TASK(current, "[BUG] cache_state=%d(%s) should be IN_USE\n",
+				tsk_rt(current)->job_params.cache_state,
+				cache_state_name(tsk_rt(current)->job_params.cache_state));
+		}
+	}
+	if (is_realtime(prev))
+	{
+		if (tsk_rt(prev)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
+		{
+			cp_mask = tsk_rt(prev)->job_params.cache_partitions;
+			cpu = tsk_rt(prev)->linked_on;
+			unlock_cache_partitions(cpu, cp_mask);	
+		} else {
+			TRACE_TASK(prev, "[BUG] cache_state=%d(%s) should be CLEAR\n",
+				tsk_rt(prev)->job_params.cache_state,
+				cache_state_name(tsk_rt(prev)->job_params.cache_state));
+		}
+	}
+
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(prev, "switched away from\n");
 #endif
@@ -1600,6 +1634,13 @@ static int __init init_gsn_fpca(void)
 			  cpu, cache_entry->cpu, cpu, cache_entry->used_cp);
 		cache_entry->cpu = cpu;
 		cache_entry->used_cp = 0;
+		/* init cache controller, not use any cache 
+ 		 * no need to grab lock now since only init once */
+		if(__lock_cache_ways_to_cpu(cpu, 0x0))
+		{
+			TRACE("P%d lock cache ways 0x0 fails\n", cpu);
+			printk("P%d lock cache ways 0x0 fails\n", cpu);
+		}
 	}
 	fp_domain_init(&gsnfpca, NULL, gsnfpca_release_jobs);
 	gsnfpca.used_cache_partitions = 0;

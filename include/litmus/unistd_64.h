@@ -27,7 +27,11 @@ __SYSCALL(__NR_wait_for_job_release, sys_wait_for_job_release)
 __SYSCALL(__NR_wait_for_ts_release, sys_wait_for_ts_release)
 #define __NR_release_ts				__LSC(10)
 __SYSCALL(__NR_release_ts, sys_release_ts)
-#define __NR_null_call				__LSC(11)
+#define __NR_get_rt_job_param		__LSC(11)
+__SYSCALL(__NR_get_rt_job_param, sys_get_rt_job_param)
+#define __NR_mark_event				__LSC(12)
+__SYSCALL(__NR_mark_event, sys_mark_event)
+#define __NR_null_call				__LSC(13)
 __SYSCALL(__NR_null_call, sys_null_call)
 
 #define NR_litmus_syscalls 12

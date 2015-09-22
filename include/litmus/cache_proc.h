@@ -10,6 +10,7 @@ int get_cache_ways_to_cpu(int cpu);
 int unlock_all_cache_ways(void);
 int unlock_cache_ways_to_cpu(int cpu);
 int __unlock_cache_ways_to_cpu(int cpu);
+int __get_used_cache_ways_on_cpu(int cpu, uint16_t *cp_mask);
 
 #endif
 

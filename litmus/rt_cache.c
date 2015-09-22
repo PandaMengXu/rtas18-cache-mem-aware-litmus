@@ -43,6 +43,39 @@ set_cache_state(struct task_struct *task, cache_state_t s)
 	tsk_rt(task)->job_params.cache_state = s;
 }
 
+/* input
+ * cpu: the cpu to check
+ * cp_mask: the cp_mask the cpu has
+ **/
+static inline void
+check_cache_status_invariant(int cpu, uint16_t cp_mask)
+{
+	int i;
+	cpu_cache_entry_t *cache_entry_tmp, *cache_entry;
+	uint16_t used_cp;
+	
+	cache_entry = &per_cpu(cpu_cache_entries, cpu);
+	for (i = 0; i < NR_CPUS; i++)
+	{
+		cache_entry_tmp = &per_cpu(cpu_cache_entries, i);
+		if (i != cpu && (cache_entry_tmp->used_cp & cp_mask))
+		{
+			TRACE("[BUG]Lock [P%d], Detect overlap CP: [P%d] used_cp:0x%x, [P%d] used_cp:0x%x",
+				   cpu, i, cache_entry_tmp->used_cp, cpu, cache_entry->used_cp);
+		}
+		if (__get_used_cache_ways_on_cpu(i, &used_cp))
+		{
+			TRACE("[ERROR] get_used_cache_ways_on_cpu %d fails\n", i);
+		}
+		if (used_cp != cache_entry_tmp->used_cp)
+		{
+			TRACE("[BUG] [P%d] cache_entry->used_cp(0x%x) != get_used_cache_ways_on_cpu->used_cp(0x%x)\n",
+				   i, cache_entry_tmp->used_cp, used_cp);
+		}
+
+	}
+}
+
 /* lock_cache_partitions
  * lock cp_mask for cpu so that only cpu can use cp_mask
  * NOTE:
@@ -55,6 +88,7 @@ void
 lock_cache_partitions(int cpu, uint16_t cp_mask)
 {
 	cpu_cache_entry_t *cache_entry;
+	uint16_t used_cp;
 
 	if (cpu == NO_CPU)
 	{
@@ -67,6 +101,7 @@ lock_cache_partitions(int cpu, uint16_t cp_mask)
 			TRACE("[BUG][P%d] has locked cp 0x%x before try to lock cp 0x%x\n",
 				  cache_entry->cpu, cache_entry->used_cp, cp_mask);
 		}
+		check_cache_status_invariant(cpu, cp_mask);
 		cache_entry->used_cp = cp_mask;
 	}
 	
@@ -74,6 +109,15 @@ lock_cache_partitions(int cpu, uint16_t cp_mask)
 	{
 		TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
 			  cpu, cp_mask);
+	}
+	if (__get_used_cache_ways_on_cpu(cpu, &used_cp))
+	{
+		TRACE("[ERROR] get_used_cache_ways_on_cpu(%d) fails\n", cpu);
+	}
+	if (used_cp != cp_mask)
+	{
+		TRACE("[BUG][P%d] lock cache 0x%x but not in effect now, current cp=0x%x\n",
+			  cpu, cp_mask, used_cp);
 	}
 	return;
 }
@@ -85,6 +129,7 @@ void
 unlock_cache_partitions(int cpu, uint16_t cp_mask)
 {
 	cpu_cache_entry_t *cache_entry;
+	uint16_t used_cp;
 
 	if (cpu == NO_CPU)
 	{
@@ -97,12 +142,21 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 			TRACE("[BUG][P%d] has locked cp 0x%x before try to unlock cp 0x%x\n",
 				  cache_entry->cpu, cache_entry->used_cp, cp_mask);
 		}
+		check_cache_status_invariant(cpu, cp_mask);
 		cache_entry->used_cp = 0;
 	}
 	if (__unlock_cache_ways_to_cpu(cpu))
 	{
 		TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
 			  cpu, cp_mask);
+	}
+	if (__get_used_cache_ways_on_cpu(cpu, &used_cp))
+	{
+		TRACE("[ERROR] get_used_cache_ways_on_cpu(%d)\n", cpu);
+	}
+	if (used_cp)
+	{
+		TRACE("[BUG]unlock cache partitions fails on P%d\n", cpu);
 	}
 	return;
 }
