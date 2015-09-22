@@ -148,6 +148,18 @@ static void __l2x0_flush_all(void)
 	debug_writel(0x00);
 }
 
+void l2x0_flush_cache_ways(u32 ways)
+{
+	unsigned long flags;
+	ways &= l2x0_way_mask;
+
+	raw_spin_lock_irqsave(&l2x0_lock, flags);
+	writel_relaxed(ways, l2x0_base + L2X0_CLEAN_INV_WAY);
+	cache_wait_way(l2x0_base + L2X0_CLEAN_INV_WAY, ways);
+	cache_sync();
+	raw_spink_unlock_irqsave(&l2x0_lock, flags);
+}
+
 static void l2x0_flush_all(void)
 {
 	unsigned long flags;
