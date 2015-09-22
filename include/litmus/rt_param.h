@@ -153,9 +153,7 @@ struct control_page {
 #define LITMUS_CP_OFFSET_TS_SC_START	16
 #define LITMUS_CP_OFFSET_IRQ_SC_START	24
 
-/* don't export internal data structures to user space (liblitmus) */
-#ifdef __KERNEL__
-
+/* WARNING: Never modify params below this line from user space */
 struct _rt_domain;
 struct bheap_node;
 struct release_heap;
@@ -191,6 +189,9 @@ struct rt_job {
 	 */
 	unsigned int    job_no;
 };
+
+/* don't export internal data structures to user space (liblitmus) */
+#ifdef __KERNEL__
 
 struct pfair_param;
 
