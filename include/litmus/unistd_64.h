@@ -34,4 +34,4 @@ __SYSCALL(__NR_mark_event, sys_mark_event)
 #define __NR_null_call				__LSC(13)
 __SYSCALL(__NR_null_call, sys_null_call)
 
-#define NR_litmus_syscalls 14
+#define NR_litmus_syscalls 16

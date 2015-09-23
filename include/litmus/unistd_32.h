@@ -21,4 +21,4 @@
 #define __NR_mark_event				__LSC(12)
 #define __NR_null_call		__LSC(13)
 
-#define NR_litmus_syscalls 14
+#define NR_litmus_syscalls 16
