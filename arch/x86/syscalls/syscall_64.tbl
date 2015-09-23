@@ -332,7 +332,9 @@
 359	common	wait_for_job_release	sys_wait_for_job_release
 360	common	wait_for_ts_release	sys_wait_for_ts_release
 361	common	release_ts		sys_release_ts
-362	common	null_call		sys_null_call
+362	common	get_rt_job_param		sys_get_rt_job_param
+363	common	mark_event		sys_mark_event
+364	common	null_call		sys_null_call
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

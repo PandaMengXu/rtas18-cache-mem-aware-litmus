@@ -2,6 +2,7 @@
  * included from arch/x86/include/asm/unistd_32.h
  *
  * LITMUS^RT syscalls with "relative" numbers
+ * NOTE: Must add sys_ calls in arch/arm/kernel/calls.S
  */
 #define __LSC(x) (__NR_LITMUS + x)
 
@@ -20,4 +21,4 @@
 #define __NR_mark_event				__LSC(12)
 #define __NR_null_call		__LSC(13)
 
-#define NR_litmus_syscalls 12
+#define NR_litmus_syscalls 14

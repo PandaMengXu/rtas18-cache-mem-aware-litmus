@@ -400,6 +400,8 @@
 		CALL(sys_wait_for_job_release)
         	CALL(sys_wait_for_ts_release)
 /* 390 */	CALL(sys_release_ts)
+		CALL(sys_get_rt_job_param)
+		CALL(sys_mark_event)
 		CALL(sys_null_call)
 
 #ifndef syscalls_counted
