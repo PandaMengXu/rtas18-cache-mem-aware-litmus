@@ -270,7 +270,7 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 	way_partitions[cpu*2] = ways_mask;
 
 	writel_relaxed(~way_partitions[cpu*2], ld_d_reg(cpu));
-	writel_relaxed(~way_partitions[cpu*2], ld_i_reg(cpu));
+	//writel_relaxed(~way_partitions[cpu*2], ld_i_reg(cpu));
 	
 out:
 	return ret;
@@ -320,14 +320,14 @@ int __get_used_cache_ways_on_cpu(int cpu, uint16_t *cp_mask)
 
 	local_irq_save(flags);
 	ways_mask_d = readl_relaxed(ld_d_reg(cpu));
-	ways_mask_i = readl_relaxed(ld_i_reg(cpu));
+	//ways_mask_i = readl_relaxed(ld_i_reg(cpu));
 	local_irq_restore(flags);
 
-	if (ways_mask_i != ways_mask_d) {
-		TRACE("Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
-		printk(KERN_ERR "Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
-		ret = ways_mask_i;
-	}
+	//if (ways_mask_i != ways_mask_d) {
+	//	TRACE("Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
+	//	printk(KERN_ERR "Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
+	//	ret = ways_mask_i;
+	//}
 	*cp_mask = ((~ways_mask_d) & CACHE_PARTITIONS_MASK);
 out:
 	return ret;
@@ -348,13 +348,13 @@ static int __get_cache_ways_to_cpu(int cpu)
 
 	local_irq_save(flags);
 	ways_mask_d = readl_relaxed(ld_d_reg(cpu));
-	ways_mask_i = readl_relaxed(ld_i_reg(cpu));
+	//ways_mask_i = readl_relaxed(ld_i_reg(cpu));
 	local_irq_restore(flags);
 
-	if (ways_mask_i != ways_mask_d) {
-		printk(KERN_ERR "Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
-		ret = ways_mask_i;
-	}
+	//if (ways_mask_i != ways_mask_d) {
+	//	printk(KERN_ERR "Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
+	//	ret = ways_mask_i;
+	//}
 out:
 	mutex_unlock(&lockdown_proc);
 	return ret;
