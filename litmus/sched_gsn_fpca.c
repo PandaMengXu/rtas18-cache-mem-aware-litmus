@@ -652,7 +652,6 @@ static noinline void job_completion(struct task_struct *t, int forced)
 
 	/* set flags */
 	tsk_rt(t)->completed = 0;
-	set_cache_config(rt, t, CACHE_WILL_CLEAR);
 	//set_cache_config(rt, t, CACHE_CLEARED);
 	/* prepare for next period */
 	prepare_for_next_period(t);
@@ -877,10 +876,17 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	 * this. Don't do a job completion if we block (can't have timers running
 	 * for blocked jobs).
 	 */
-	if (!np && (out_of_time || sleep) && !blocks)
+	if (exists && !np && (out_of_time || sleep) && !blocks)
 	{
 		finish = 1;
+		set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 		job_completion(entry->scheduled, !sleep);
+	}
+
+	/* Be preempted */
+	if (exists && !np && !(out_of_time || sleep) && !blocks &&
+	    entry->linked != entry->scheduled) {
+		set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 	}
 
 	/* Link pending task if we became unlinked.
@@ -909,7 +915,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	    entry->linked != entry->scheduled) {
 		if (entry->scheduled) {
 			/* We unlock cache at CACHE_WILL_CLEAR state */
-			set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
+			//set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 			/* not gonna be scheduled soon */
 			entry->scheduled->rt_param.scheduled_on = NO_CPU;
 			/* No need to set job_params.cache_partitions to 0 because cache_state has indicated that. */
@@ -997,39 +1003,40 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 	int cpu;
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
-	if (is_realtime(current))
-	{
-		TRACE_TASK(current, "lock cache ways 0x%x\n", tsk_rt(current)->job_params.cache_partitions);
-		if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
-		{
-			cp_mask = tsk_rt(current)->job_params.cache_partitions;
-			cpu = tsk_rt(current)->linked_on;
-			if (tsk_rt(current)->task_params.num_cache_partitions != 0 &&
-			    tsk_rt(current)->job_params.cache_partitions == 0)
-			{
-				TRACE_TASK(current, "[BUG] assigned cp=0x%x should not be 0\n",
-					tsk_rt(current)->job_params.cache_partitions);
-			}
-			lock_cache_partitions(cpu, cp_mask);
-		} else {
-			TRACE_TASK(current, "[BUG] cache_state=%d(%s) should be IN_USE\n",
-				tsk_rt(current)->job_params.cache_state,
-				cache_state_name(tsk_rt(current)->job_params.cache_state));
-		}
-	}
-	if (is_realtime(prev))
-	{
-		if (tsk_rt(prev)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
-		{
-			cp_mask = tsk_rt(prev)->job_params.cache_partitions;
-			cpu = tsk_rt(prev)->linked_on;
-			unlock_cache_partitions(cpu, cp_mask);	
-		} else {
-			TRACE_TASK(prev, "[BUG] cache_state=%d(%s) should be CLEAR\n",
-				tsk_rt(prev)->job_params.cache_state,
-				cache_state_name(tsk_rt(prev)->job_params.cache_state));
-		}
-	}
+	TRACE_TASK(current, "switched away from\n");
+//	if (is_realtime(current))
+//	{
+//		TRACE_TASK(current, "lock cache ways 0x%x\n", tsk_rt(current)->job_params.cache_partitions);
+//		if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
+//		{
+//			cp_mask = tsk_rt(current)->job_params.cache_partitions;
+//			cpu = tsk_rt(current)->linked_on;
+//			if (tsk_rt(current)->task_params.num_cache_partitions != 0 &&
+//			    tsk_rt(current)->job_params.cache_partitions == 0)
+//			{
+//				TRACE_TASK(current, "[BUG] assigned cp=0x%x should not be 0\n",
+//					tsk_rt(current)->job_params.cache_partitions);
+//			}
+//			lock_cache_partitions(cpu, cp_mask);
+//		} else {
+//			TRACE_TASK(current, "[BUG] cache_state=%d(%s) should be IN_USE\n",
+//				tsk_rt(current)->job_params.cache_state,
+//				cache_state_name(tsk_rt(current)->job_params.cache_state));
+//		}
+//	}
+//	if (is_realtime(prev))
+//	{
+//		if (tsk_rt(prev)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
+//		{
+//			cp_mask = tsk_rt(prev)->job_params.cache_partitions;
+//			cpu = tsk_rt(prev)->linked_on;
+//			unlock_cache_partitions(cpu, cp_mask);	
+//		} else {
+//			TRACE_TASK(prev, "[BUG] cache_state=%d(%s) should be CLEAR\n",
+//				tsk_rt(prev)->job_params.cache_state,
+//				cache_state_name(tsk_rt(prev)->job_params.cache_state));
+//		}
+//	}
 
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(prev, "switched away from\n");
