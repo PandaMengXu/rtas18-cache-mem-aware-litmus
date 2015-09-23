@@ -148,7 +148,7 @@ static void __l2x0_flush_all(void)
 	debug_writel(0x00);
 }
 
-void l2x0_flush_cache_ways(u32 ways)
+void l2x0_flush_cache_ways(uint16_t ways)
 {
 	unsigned long flags;
 	ways &= l2x0_way_mask;

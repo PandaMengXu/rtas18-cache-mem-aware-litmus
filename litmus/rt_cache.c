@@ -119,6 +119,12 @@ lock_cache_partitions(int cpu, uint16_t cp_mask)
 		TRACE("[BUG][P%d] lock cache 0x%x but not in effect now, current cp=0x%x\n",
 			  cpu, cp_mask, used_cp);
 	}
+	if (cp_mask != 0)
+		l2x0_flush_cache_ways(cp_mask);
+	else
+	{
+		TRACE("[BUG] lock cache partition 0 on cpu %d\n", cpu);
+	}
 	return;
 }
 
@@ -157,6 +163,12 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 	if (used_cp)
 	{
 		TRACE("[BUG]unlock cache partitions fails on P%d\n", cpu);
+	}
+	if (cp_mask != 0)
+		l2x0_flush_cache_ways(cp_mask);
+	else
+	{
+		TRACE("[BUG] unlock cache partition 0 on cpu %d\n", cpu);
 	}
 	return;
 }
