@@ -4,11 +4,6 @@
  * Implementation of the GSN-FPCANW scheduling algorithm.
  * Copy from litmus/sched_gsn_fpca.c
  *
- * GSN-FPCANW is the gFPca^nw algorithm desribed in the paper.
- * It does not allow priority inversion.
- * When a high priority ready task is blocked by cache, all other
- * ready tasks in ready_queue will not be allowed to execute.
- *
  * This version uses the simple approach and serializes all scheduling
  * decisions by the use of a queue lock. This is probably not the
  * best way to do it, but it should suffice for now.
@@ -269,7 +264,7 @@ static void preempt(cpu_entry_t *entry)
 	preempt_if_preemptable(entry->scheduled, entry->cpu);
 }
 
-/* requeue - Put an unlinked task into gsn-fpcanw domain.
+/* requeue - Put an unlinked task into gsn-fpca domain.
  *           Caller must hold gsnfpcanw_lock.
  */
 static noinline void requeue(struct task_struct* task)
@@ -370,9 +365,7 @@ static inline int check_for_preemptions_helper(void)
 				num_cp_to_use += 1;
 			}
 		}
-		/* Find the lowest priority CPU to preempt
- 		 * We should use linked here since a preempting task may be linked
- 		 * but have not be executed on the CPU */
+		/* Find the lowest priority CPU to preempt */
 		entry = lowest_prio_cpu();
 		cur = entry->linked;
 
@@ -422,6 +415,8 @@ static inline int check_for_preemptions_helper(void)
 
 			if (!entry)
 				break;
+			/* We should use linked here since linked is who should run here
+ 			 * linked may != scheduled */
 			cur = entry->linked;
 			standby_cpus[entry->cpu] = entry;
 			remove_cpu(entry);
@@ -594,7 +589,7 @@ static inline int check_for_preemptions_helper(void)
 	return has_preemption;
 }
 
-/* check_for_preemptions for all possible CPUs for gFPca^nw */
+/* check_for_preemptions for all possible CPUs for gFPcanw */
 static void check_for_preemptions(void)
 {
 	int i = 0;
@@ -657,7 +652,6 @@ static noinline void job_completion(struct task_struct *t, int forced)
 
 	/* set flags */
 	tsk_rt(t)->completed = 0;
-	set_cache_config(rt, t, CACHE_WILL_CLEAR);
 	//set_cache_config(rt, t, CACHE_CLEARED);
 	/* prepare for next period */
 	prepare_for_next_period(t);
@@ -882,10 +876,17 @@ static struct task_struct* gsnfpcanw_schedule(struct task_struct * prev)
 	 * this. Don't do a job completion if we block (can't have timers running
 	 * for blocked jobs).
 	 */
-	if (!np && (out_of_time || sleep) && !blocks)
+	if (exists && !np && (out_of_time || sleep) && !blocks)
 	{
 		finish = 1;
+		set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 		job_completion(entry->scheduled, !sleep);
+	}
+
+	/* Be preempted */
+	if (exists && !np && !(out_of_time || sleep) && !blocks &&
+	    entry->linked != entry->scheduled) {
+		set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 	}
 
 	/* Link pending task if we became unlinked.
@@ -914,14 +915,14 @@ static struct task_struct* gsnfpcanw_schedule(struct task_struct * prev)
 	    entry->linked != entry->scheduled) {
 		if (entry->scheduled) {
 			/* We unlock cache at CACHE_WILL_CLEAR state */
-			set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
+			//set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 			/* not gonna be scheduled soon */
 			entry->scheduled->rt_param.scheduled_on = NO_CPU;
 			/* No need to set job_params.cache_partitions to 0 because cache_state has indicated that. */
 			TRACE_TASK(entry->scheduled, "scheduled_on = NO_CPU, rt->used_cp_mask=0x%x should exclude job.cp_mask=0x%x\n",
 					   rt->used_cache_partitions, entry->scheduled->rt_param.job_params.cache_partitions);
 			/* Trace when preempted via cache by another CPU */
-			if (!blocks && !entry->linked && !finish
+			if (!blocks && !entry->linked && !finish 
 				&& !(prev_cache_state & CACHE_INIT))
 			{
 				if (!entry->preempting)
@@ -974,7 +975,7 @@ static struct task_struct* gsnfpcanw_schedule(struct task_struct * prev)
 
 	/* Check correctness of scheduler
   	 * NOTE: TODO: avoid such check in non-debug mode */
-	gsnfpcanw_check_sched_invariant();
+	//gsnfpcanw_check_sched_invariant();
 
 	raw_spin_unlock(&gsnfpcanw_lock);
 
@@ -998,10 +999,45 @@ static struct task_struct* gsnfpcanw_schedule(struct task_struct * prev)
 static void gsnfpcanw_finish_switch(struct task_struct *prev)
 {
 	cpu_entry_t* 	entry = &__get_cpu_var(gsnfpcanw_cpu_entries);
+//	int16_t cp_mask;
+//	int cpu;
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
-	if (is_realtime(current))
-		TRACE_TASK(current, "lock cache ways 0x%x\n", tsk_rt(current)->job_params.cache_partitions);
+	TRACE_TASK(current, "switched away from\n");
+//	if (is_realtime(current))
+//	{
+//		TRACE_TASK(current, "lock cache ways 0x%x\n", tsk_rt(current)->job_params.cache_partitions);
+//		if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
+//		{
+//			cp_mask = tsk_rt(current)->job_params.cache_partitions;
+//			cpu = tsk_rt(current)->linked_on;
+//			if (tsk_rt(current)->task_params.num_cache_partitions != 0 &&
+//			    tsk_rt(current)->job_params.cache_partitions == 0)
+//			{
+//				TRACE_TASK(current, "[BUG] assigned cp=0x%x should not be 0\n",
+//					tsk_rt(current)->job_params.cache_partitions);
+//			}
+//			lock_cache_partitions(cpu, cp_mask);
+//		} else {
+//			TRACE_TASK(current, "[BUG] cache_state=%d(%s) should be IN_USE\n",
+//				tsk_rt(current)->job_params.cache_state,
+//				cache_state_name(tsk_rt(current)->job_params.cache_state));
+//		}
+//	}
+//	if (is_realtime(prev))
+//	{
+//		if (tsk_rt(prev)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
+//		{
+//			cp_mask = tsk_rt(prev)->job_params.cache_partitions;
+//			cpu = tsk_rt(prev)->linked_on;
+//			unlock_cache_partitions(cpu, cp_mask);	
+//		} else {
+//			TRACE_TASK(prev, "[BUG] cache_state=%d(%s) should be CLEAR\n",
+//				tsk_rt(prev)->job_params.cache_state,
+//				cache_state_name(tsk_rt(prev)->job_params.cache_state));
+//		}
+//	}
+
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(prev, "switched away from\n");
 #endif
@@ -1081,7 +1117,7 @@ static void gsnfpcanw_task_block(struct task_struct *t)
 	TRACE_TASK(t, "block at %llu, cp_mask=0x%x\n",
 			   litmus_clock(), tsk_rt(t)->job_params.cache_partitions);
 
-	/* unlink if necessary */
+	/* unlink if necessary, Always clear cache before unlink */
 	raw_spin_lock_irqsave(&gsnfpcanw_lock, flags);
 	set_cache_config(rt, t, CACHE_WILL_CLEAR);
 	unlink(t);
@@ -1114,7 +1150,7 @@ static void gsnfpcanw_task_exit(struct task_struct * t)
 	}
 	TRACE_TASK(t, "exit, used_cp_mask=0x%x cleared by job.cp_mask=0x%x\n",
 			   rt->used_cache_partitions, tsk_rt(t)->job_params.cache_partitions);
-	/* schedule point when task exit */
+	/* schedule point when task is blocked */
 	check_for_preemptions();
 	raw_spin_unlock_irqrestore(&gsnfpcanw_lock, flags);
 
@@ -1154,8 +1190,8 @@ static long gsnfpcanw_admit_task(struct task_struct* tsk)
 	}
 }
 
-/* NOTE: GSN-FPCANW does not consider LITMUS_LOCKING protocol now!
- * We removed anything related to CONFIG_LITMUS_LOCKING */
+/* NOTE: GSN-FPCANW does not consider LITMUS_LOCKING protocol now! 
+ * The code under CONFIG_LITMUS_LOCKING should never be used! */
 
 static struct domain_proc_info gsnfpcanw_domain_proc_info;
 static long gsnfpcanw_get_domain_proc_info(struct domain_proc_info **ret)
@@ -1238,7 +1274,7 @@ static long gsnfpcanw_deactivate_plugin(void)
 }
 
 /*	Plugin object	*/
-static struct sched_plugin gsn_fpca_plugin __cacheline_aligned_in_smp = {
+static struct sched_plugin gsn_fpcanw_plugin __cacheline_aligned_in_smp = {
 	.plugin_name		= "GSN-FPCANW",
 	.finish_switch		= gsnfpcanw_finish_switch,
 	.task_new		= gsnfpcanw_task_new,
@@ -1274,18 +1310,25 @@ static int __init init_gsn_fpcanw(void)
 		entry->cpu 	 = cpu;
 		entry->hn        = &gsnfpcanw_heap_node[cpu];
 		bheap_node_init(&entry->hn, entry);
-		/* initialize CPU cache status */
 		cache_entry = &per_cpu(cpu_cache_entries, cpu);
-		TRACE("[P%d] initialize cpu_entry: cpu=%d used_cp=0x%x initialized to 0x0\n",
-			  cpu, cache_entry->cpu, cache_entry->used_cp);
+		TRACE("[P%d] gsn_fpcanw: cpu:%d->%d used_cpu:%d->0\n",
+			  cpu, cache_entry->cpu, cpu, cache_entry->used_cp);
 		cache_entry->cpu = cpu;
 		cache_entry->used_cp = 0;
+		/* init cache controller, not use any cache 
+ 		 * no need to grab lock now since only init once */
+		if(__lock_cache_ways_to_cpu(cpu, 0x0))
+		{
+			TRACE("P%d lock cache ways 0x0 fails\n", cpu);
+			printk("P%d lock cache ways 0x0 fails\n", cpu);
+		}
 	}
+	/* write back all cache */
+	l2x0_flush_cache_ways(0xffff);
 	fp_domain_init(&gsnfpcanw, NULL, gsnfpcanw_release_jobs);
 	gsnfpcanw.used_cache_partitions = 0;
 	TRACE("init_gsn_fpcanw: rt.used_cp_mask=0x%x\n", gsnfpcanw.used_cache_partitions);
-	TRACE("[WARN] DO NOT USE GSN-FPCANW NOW! WILL REWRITE\n");
-	return register_sched_plugin(&gsn_fpca_plugin);
+	return register_sched_plugin(&gsn_fpcanw_plugin);
 }
 
 
