@@ -444,6 +444,10 @@ static inline int check_for_preemptions_helper(void)
 				cpu_ok = 1;
 				cpu_to_preempt = entry;
 			}
+			if (!list_empty(&tsk_rt(cur)->standby_list))
+			{
+				TRACE_TASK(cur, "[BUG] going to have corrupted standby_list\n");
+			}
 			list_add(&tsk_rt(cur)->standby_list, &tsk_rt(&preempted_tasks)->standby_list);
 			if(count_set_bits(tsk_rt(cur)->job_params.cache_partitions) 
 				   != tsk_rt(cur)->task_params.num_cache_partitions)
@@ -592,19 +596,45 @@ static inline int check_for_preemptions_helper(void)
 /* check_for_preemptions for all possible CPUs for gFPca */
 static void check_for_preemptions(void)
 {
-	int i = 0;
 	int has_preemption = 0;
+	int num_preemption = 0;
+	int num_blocked_hi_tasks = 0;
+	struct task_struct *cur;
+	struct task_struct blocked_hi_tasks;
+	struct list_head *iter, *tmp;
 
-	for (i = 0; i <= NR_CPUS + 1; i++)
-	{
+	INIT_LIST_HEAD(&tsk_rt(&blocked_hi_tasks)->standby_list);
+
+	do {
 		has_preemption = check_for_preemptions_helper();
-		if (has_preemption == 0)
-			break;
-	}
+		if (has_preemption == 1)
+			num_preemption++;
+		else
+		{
+			/* Highest priority task in ready queue cannot preempt
+ 			 * Save it to blocked_hi_tasks and try the next one in 
+ 			 * ready_queue */
+			cur = __take_ready(&gsnfpca);
+			if (!cur)
+				break;
+			if (!list_empty(&tsk_rt(cur)->standby_list))
+			{
+				TRACE_TASK(cur, "[BUG] going to have corrupted standby_list\n");
+			}
+			list_add(&tsk_rt(cur)->standby_list, &tsk_rt(&blocked_hi_tasks)->standby_list);
+			num_blocked_hi_tasks++;
+			TRACE_TASK(cur, "%dth high priority task cannot preempt, try lower priority ready task.\n", num_blocked_hi_tasks);
+		}
+	} while (num_preemption <= NR_CPUS);
 
-	if (i == NR_CPUS + 1)
-	{
-		TRACE("[BUG] ready_queue is not sorted properly.\n");
+	if (num_blocked_hi_tasks == 0)
+		return;
+
+	list_for_each_safe(iter, tmp, &tsk_rt(&blocked_hi_tasks)->standby_list) {
+			struct rt_param *rt_cur = list_entry(iter, struct rt_param, standby_list);
+			struct task_struct *tsk_cur = list_entry(rt_cur, struct task_struct, rt_param); /* correct */
+			list_del_init(&rt_cur->standby_list);
+			__add_ready(&gsnfpca, tsk_cur);
 	}
 
 	return;
@@ -999,8 +1029,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 static void gsnfpca_finish_switch(struct task_struct *prev)
 {
 	cpu_entry_t* 	entry = &__get_cpu_var(gsnfpca_cpu_entries);
-	int16_t cp_mask;
-	int cpu;
+//	int16_t cp_mask;
+//	int cpu;
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
 	TRACE_TASK(current, "switched away from\n");
