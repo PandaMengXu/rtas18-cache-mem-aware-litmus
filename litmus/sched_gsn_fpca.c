@@ -1649,6 +1649,8 @@ static int __init init_gsn_fpca(void)
 			printk("P%d lock cache ways 0x0 fails\n", cpu);
 		}
 	}
+	/* write back all cache */
+	l2x0_flush_cache_ways(0xffff);
 	fp_domain_init(&gsnfpca, NULL, gsnfpca_release_jobs);
 	gsnfpca.used_cache_partitions = 0;
 	TRACE("init_gsn_fpca: rt.used_cp_mask=0x%x\n", gsnfpca.used_cache_partitions);
