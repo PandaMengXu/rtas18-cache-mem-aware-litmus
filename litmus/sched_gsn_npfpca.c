@@ -308,7 +308,6 @@ static inline int check_for_preemptions_helper(void)
 	int num_used_cache_partitions = 0;
 	int cpu_ok = 0;
 	int cache_ok = 0;
-	int only_take_idle_cache = 0;
 	uint16_t cp_mask_to_use = 0; /* mask of cache partitions the task to use */
 	int num_cp_to_use = 0;
 	struct task_struct preempted_tasks;
@@ -351,16 +350,15 @@ static inline int check_for_preemptions_helper(void)
 		struct task_struct* cur = NULL;
 		/* Enough idle cache partitions */
 		cache_ok = 1;
-		only_take_idle_cache = 1;
 		cp_mask_to_use = 0;
-		for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
+		for(i = 0; i < MAX_NUM_CACHE_PARTITIONS; i++)
 		{
 			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
 				break;
 			if (!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK))
 			{
 				if (cp_mask_to_use & (1<<i) & CACHE_PARTITIONS_MASK)
-					TRACE_TASK(task, "cp_mask_to_use=0x%x double set i=%d\n",
+					TRACE_TASK(task, "[BUG] cp_mask_to_use=0x%x double set i=%d\n",
 							   cp_mask_to_use, i);
 				cp_mask_to_use |= (1<<i) & CACHE_PARTITIONS_MASK;
 				num_cp_to_use += 1;
@@ -380,142 +378,7 @@ static inline int check_for_preemptions_helper(void)
 		}
 		TRACE_TASK(task, "Enough idle cache, cache_ok=%d, cpu_ok=%d, cp_mask_to_use=0x%x, cpu_to_preempt=%d\n",
 				   cache_ok, cpu_ok, cp_mask_to_use, cpu_to_preempt->cpu);
-	} else
-	{
-		int cpu = 0;
-
-		BUG_ON(num_cp_to_use);
-		/* take idle cache partitions first */
-		for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
-		{
-			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
-			{
-				TRACE_TASK(task, "[BUG] Idle cache is enough but still try to preempt cache\n");
-				break;
-			}
-			if (!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK))
-			{
-				if (cp_mask_to_use & (1<<i) & CACHE_PARTITIONS_MASK)
-					TRACE_TASK(task, "cp_mask_to_use=0x%x double set i=%d\n",
-							   cp_mask_to_use, i);
-				cp_mask_to_use |= (1<<i) & CACHE_PARTITIONS_MASK;
-				num_cp_to_use++;
-			}
-		}
-		TRACE_TASK(task, "take idle cps 0x%x\n", cp_mask_to_use);
-
-		//BUG_ON(num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions);
-		if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
-		{
-			TRACE_TASK(task, "[BUG] num_cp_to_use=%d >= task.num_cp=%d\n",
-					   num_cp_to_use, tsk_rt(task)->task_params.num_cache_partitions);
-		}
-		do { /* Iterate all CPUs in increasing order */
-			cpu_entry_t* entry = lowest_prio_cpu();
-			struct task_struct* cur;
-
-			if (!entry)
-				break;
-			/* We should use linked here since linked is who should run here
- 			 * linked may != scheduled */
-			cur = entry->linked;
-			standby_cpus[entry->cpu] = entry;
-			remove_cpu(entry);
-			if (!cur || !is_realtime(cur))
-			{
-				if (!cpu_ok)
-				{
-					cpu_ok = 1;
-					cpu_to_preempt = entry;
-				}
-				cpu++;
-				continue;
-			}
-			/* RT task may have not locked any cache partition */
-			if (!(tsk_rt(cur)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE)))
-			{
-				cpu++;
-				TRACE_TASK(cur, "[BUG] was linked but is not in CACHE_WILL_USE or CACHE_IN_USE\n");
-				continue;
-			}
-			if (!fp_higher_prio(task, cur))
-				break;
-			if (!cpu_ok)
-			{
-				cpu_ok = 1;
-				cpu_to_preempt = entry;
-			}
-			list_add(&tsk_rt(cur)->standby_list, &tsk_rt(&preempted_tasks)->standby_list);
-			if(count_set_bits(tsk_rt(cur)->job_params.cache_partitions) 
-				   != tsk_rt(cur)->task_params.num_cache_partitions)
-			{
-				printk("[BUG] task=%d, job=%d, job.cp_mask=0x%x, count_set_bits=%d, task.num_cp=%d, rt.used_cp_mask=0x%x\n",
-						   cur->pid,
-						   tsk_rt(cur)->job_params.job_no,
-						   tsk_rt(cur)->job_params.cache_partitions,
-						   count_set_bits(tsk_rt(cur)->job_params.cache_partitions),
-						   tsk_rt(cur)->task_params.num_cache_partitions,
-						   rt->used_cache_partitions);
-				TRACE_TASK(cur, "[BUG] job=%d, job.cp_mask=0x%x, count_set_bits=%d, task.num_cp=%d, rt.used_cp_mask=0x%x\n",
-						   tsk_rt(cur)->job_params.job_no,
-						   tsk_rt(cur)->job_params.cache_partitions,
-						   count_set_bits(tsk_rt(cur)->job_params.cache_partitions),
-						   tsk_rt(cur)->task_params.num_cache_partitions,
-						   rt->used_cache_partitions);
-			}
-			num_cp_to_use += tsk_rt(cur)->task_params.num_cache_partitions;
-			if (num_cp_to_use <= tsk_rt(task)->task_params.num_cache_partitions) {
-				if (cp_mask_to_use & tsk_rt(cur)->job_params.cache_partitions)
-				{
-					TRACE_TASK(task, "[BUG] preempt %s/%d/%d cache 0x%x but already has cache 0x%x\n",
-				   			   cur->comm, cur->pid, tsk_rt(cur)->job_params.job_no,
-							   tsk_rt(cur)->job_params.cache_partitions,
-							   cp_mask_to_use);
-				}
-				cp_mask_to_use |= tsk_rt(cur)->job_params.cache_partitions;
-			} else {
-				num_cp_to_use -= tsk_rt(cur)->task_params.num_cache_partitions;
-				for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
-				{
-					if (tsk_rt(cur)->job_params.cache_partitions & (1<<i))
-					{
-						if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
-							break;
-						if (cp_mask_to_use & (1<<i))
-						{
-							TRACE_TASK(task, "[BUG] preempt %s/%d/%d cache 0x%x (i=%d) but already has cache 0x%x\n",
-									   cur->comm, cur->pid, tsk_rt(cur)->job_params.job_no,
-									   tsk_rt(cur)->job_params.cache_partitions, i,
-									   cp_mask_to_use);
-						}
-						num_cp_to_use++;
-						cp_mask_to_use |= (1<<i);
-					}
-				}
-			}
-			TRACE_TASK(task, "preempt %s/%d/%d, cp_mask_to_use=0x%x\n",
-					   cur->comm, cur->pid, tsk_rt(cur)->job_params.job_no, cp_mask_to_use);
-			/* Stop searching preempted cache when we find enough */
-			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
-				break;
-			cpu++;
-		} while (cpu < NR_CPUS);
-		if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
-			cache_ok = 1;
-		else { /* clear preempted list if not preempt */
-			struct list_head *iter, *tmp;
-			cache_ok = 0;
-			list_for_each_safe(iter, tmp, &tsk_rt(&preempted_tasks)->standby_list) {
-				list_del_init(iter);
-			}
-		}
-		/* restore the cpu bheap */
-		for (cpu = 0; cpu < NR_CPUS; cpu++)  {
-			if (standby_cpus[cpu] != NULL)
-				insert_cpu(standby_cpus[cpu]);
-		}
-		memset(&standby_cpus, 0, sizeof(standby_cpus));
-	} /* Have picked cache partitions */
+	}
 
 	/* If preemptible, link task to preempted cpu, preempt preempted_tasks*/
 	if ( !cache_ok || !cpu_ok )
@@ -531,39 +394,7 @@ static inline int check_for_preemptions_helper(void)
 	has_preemption = 1;
 	task = __take_ready(&gsnnpfpca);
 	BUG_ON(!task);
-	if (!only_take_idle_cache)
-	{
-		list_for_each_safe(iter, tmp, &tsk_rt(&preempted_tasks)->standby_list) {
-			struct rt_param *rt_cur = list_entry(iter, struct rt_param, standby_list);
-			struct task_struct *tsk_cur = list_entry(rt_cur, struct task_struct, rt_param); /* correct */
-			cpu_entry_t *cpu_entry = gsnnpfpca_cpus[rt_cur->linked_on];
-			list_del_init(&rt_cur->standby_list);
-			if (cpu_entry->cpu != cpu_to_preempt->cpu)
-			{
-				/* requeue the linked task; scheduled task is requeued at schedule() */
-				if (requeue_preempted_job(cpu_entry->linked))
-					requeue(cpu_entry->linked);
-				/* update global view of cache partitions */
-				set_cache_config(rt, tsk_cur, CACHE_WILL_CLEAR);
-				link_task_to_cpu(NULL, cpu_entry);
-				cpu_entry->preempting = task;
-				preempt(cpu_entry);
-			}
-		}
-		INIT_LIST_HEAD(&tsk_rt(&standby_tasks)->standby_list);
-	}
-	/* Link task and preempt the cpu_to_preempt */
-	/* The preempted CPU may be preempted by cache or CPU only
- 	 * Must be executed in both situation
- 	 * Otherwise will fail to link the task and the task will never be sched
- 	 * NOTE: We must requeue the preempted task on preempted CPU, otherwise,
- 	 * scheduler will lose track of the preempted task.
- 	 * Unless task volunteerly yield CPU by finishing its job,
- 	 * preempting CPU has the responsibility to add preempted task back to
- 	 * ready_queue since preempted task must be runnable 
- 	 * BUG FIX: A RT task may be preempted only by CPU when system has enough
- 	 * free cache! Preempting task take free cache, release cache of 
- 	 * preempted task AND requeue the preempted task */
+	/* Requeue preempted task and preempt the cpu_to_preempt */
 	if (cpu_to_preempt->linked && is_realtime(cpu_to_preempt->linked))
 	{
 		if (requeue_preempted_job(cpu_to_preempt->linked))
