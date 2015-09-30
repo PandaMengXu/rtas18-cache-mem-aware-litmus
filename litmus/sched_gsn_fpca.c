@@ -1683,6 +1683,7 @@ static int __init init_gsn_fpca(void)
 	l2x0_flush_cache_ways(0xffff);
 	fp_domain_init(&gsnfpca, NULL, gsnfpca_release_jobs);
 	gsnfpca.used_cache_partitions = 0;
+	memset(gsnfpca.l2_cps, 0, sizeof(gsnfpca.l2_cps));
 	TRACE("init_gsn_fpca: rt.used_cp_mask=0x%x\n", gsnfpca.used_cache_partitions);
 	return register_sched_plugin(&gsn_fpca_plugin);
 }

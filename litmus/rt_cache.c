@@ -83,9 +83,11 @@ check_cache_status_invariant(int cpu, uint16_t cp_mask)
  *    scheduler on diff CPUs do not have race condition
  * 2) We have race condition when user write to /proc/sys
  *    As long as users do not write to /proc/sys, we are safe
+ *
+ * tsk: lock cache partition for task tsk
  */
 void
-lock_cache_partitions(int cpu, uint16_t cp_mask)
+lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_domain_t *rt)
 {
 	cpu_cache_entry_t *cache_entry;
 	uint16_t used_cp;
@@ -120,7 +122,24 @@ lock_cache_partitions(int cpu, uint16_t cp_mask)
 			  cpu, cp_mask, used_cp);
 	}
 	if (cp_mask != 0)
-		l2x0_flush_cache_ways(cp_mask);
+	{
+		/* TODO: calculate cache ways to flush */
+		uint16_t cp_mask_to_flush = 0;
+		int i;
+		for (i = 0; i < MAX_CACHE_PARTITIONS; i++)
+		{
+			if (cp_mask & (1 << i))
+			{
+				if (rt->l2_cps[i] != tsk->pid)
+				{
+					cp_mask_to_flush |= (1 << i);
+					rt->l2_cps[i] = tsk->pid;
+				}
+			}
+		}
+		if (cp_mask_to_flush != 0)
+			l2x0_flush_cache_ways(cp_mask_to_flush);
+	}
 	else
 	{
 		TRACE("[BUG] lock cache partition 0 on cpu %d\n", cpu);
@@ -164,12 +183,12 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 	{
 		TRACE("[BUG]unlock cache partitions fails on P%d\n", cpu);
 	}
-	if (cp_mask != 0)
-		l2x0_flush_cache_ways(cp_mask);
-	else
-	{
-		TRACE("[BUG] unlock cache partition 0 on cpu %d\n", cpu);
-	}
+	//if (cp_mask != 0)
+	//	l2x0_flush_cache_ways(cp_mask);
+	//else
+	//{
+	//	TRACE("[BUG] unlock cache partition 0 on cpu %d\n", cpu);
+	//}
 	return;
 }
 
@@ -259,7 +278,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 					   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
 		/* PL310 lock cache */
 		lock_cache_partitions(tsk_rt(task)->linked_on,
-				tsk_rt(task)->job_params.cache_partitions);
+				tsk_rt(task)->job_params.cache_partitions, task, rt);
 		rt->used_cache_partitions |=
 			(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
 	}

@@ -36,7 +36,7 @@ typedef struct  {
  *    As long as users do not write to /proc/sys, we are safe
  */
 void
-lock_cache_partitions(int cpu, uint16_t cp_mask);
+lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_domain_t *rt);
 
 /* unlock_cache_partitions
  * unlock cp_mask for cpu so that other cpus can use cp_mask
