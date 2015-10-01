@@ -298,6 +298,21 @@ static cpu_entry_t* gsnfpca_get_nearest_available_cpu(cpu_entry_t *start)
 }
 #endif
 
+/* global lock is grabbed by caller */
+static inline uint16_t get_prev_cps(rt_domain_t *rt, pid_t pid)
+{
+	uint16_t prev_cp_mask = 0;
+	int i;
+
+	for (i = 0; i < MAX_NUM_CACHE_PARTITIONS; i++)
+	{
+		if (rt->l2_cps[i] == pid)
+			prev_cp_mask |= (1 << i);
+	}
+
+	return prev_cp_mask;
+}
+
 /* Check if top task in ready_queue can preempt a CPU
  * Remove the top task from ready_queue if preemption occurs  */
 static inline int check_for_preemptions_helper(void)
@@ -315,6 +330,7 @@ static inline int check_for_preemptions_helper(void)
 	int i;
 	struct list_head *iter, *tmp;
 	int has_preemption = 0;
+	uint16_t prev_cp_mask = 0;
 
 	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
@@ -337,6 +353,8 @@ static inline int check_for_preemptions_helper(void)
 		cpu_to_preempt = cpu_to_preempt;
 		TRACE_TASK(task, "linking to local CPU %d to avoid IPI if cache is enough\n", cpu_to_preempt->cpu);
 	}
+	/* Get task cache partitions not polluted/flushed by others */
+	prev_cp_mask = get_prev_cps(rt, task->pid);
 
 	/* Check if cache and cpu is available */
 	num_used_cache_partitions =
@@ -356,10 +374,25 @@ static inline int check_for_preemptions_helper(void)
 		{
 			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
 				break;
-			if (!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK))
+			if ( (prev_cp_mask & (1<<i)) && 
+				(!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK)) )
 			{
 				if (cp_mask_to_use & (1<<i) & CACHE_PARTITIONS_MASK)
-					TRACE_TASK(task, "cp_mask_to_use=0x%x double set i=%d\n",
+					TRACE_TASK(task, "[BUG] cp_mask_to_use=0x%x double set i=%d\n",
+							   cp_mask_to_use, i);
+				cp_mask_to_use |= (1<<i) & CACHE_PARTITIONS_MASK;
+				num_cp_to_use += 1;
+			}
+		}
+		for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
+		{
+			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
+				break;
+			if ( !(prev_cp_mask & (1<<i)) &&
+				!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK))
+			{
+				if (cp_mask_to_use & (1<<i) & CACHE_PARTITIONS_MASK)
+					TRACE_TASK(task, "[BUG] cp_mask_to_use=0x%x double set i=%d\n",
 							   cp_mask_to_use, i);
 				cp_mask_to_use |= (1<<i) & CACHE_PARTITIONS_MASK;
 				num_cp_to_use += 1;
@@ -1631,7 +1664,7 @@ static long gsnfpca_deactivate_plugin(void)
 
 /*	Plugin object	*/
 static struct sched_plugin gsn_fpca_plugin __cacheline_aligned_in_smp = {
-	.plugin_name		= "GSN-FPCA",
+	.plugin_name		= "GSN-FPCA2",
 	.finish_switch		= gsnfpca_finish_switch,
 	.task_new		= gsnfpca_task_new,
 	.complete_job		= gsnfpca_complete_job,
