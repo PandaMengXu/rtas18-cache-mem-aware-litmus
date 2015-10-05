@@ -80,6 +80,7 @@ static inline void save_irq_flags(struct timestamp *ts, unsigned int irq_count)
 #define DO_NOT_RECORD_TIMESTAMP 0
 #define RECORD_LOCAL_TIMESTAMP 1
 #define RECORD_OFFSET_TIMESTAMP 2
+#define RECORD_LITMUS_TIMESTAMP 3
 
 static inline void __write_record(
 	uint8_t event,
@@ -154,6 +155,9 @@ static inline void __write_record(
 			timestamp = ft_timestamp();
 		if (record_timestamp == RECORD_OFFSET_TIMESTAMP)
 			timestamp += cycle_offset[smp_processor_id()][cpu];
+		/* overwrite timestamp for IPI on Freescale IMX6 board */
+		if (record_timestamp == RECORD_LITMUS_TIMESTAMP)
+			timestamp = litmus_clock();
 
 		ts->timestamp = timestamp;
 		ft_buffer_finish_write(buf, ts);
@@ -191,7 +195,7 @@ static inline void save_msg_timestamp(
 	__write_record(event, is_realtime(t) ? TSK_RT : TSK_BE,
 		       t->pid,
 		       0, LOCAL_IRQ_COUNT, hide_irq,
-		       0, RECORD_LOCAL_TIMESTAMP,
+		       0, RECORD_LITMUS_TIMESTAMP,
 		       0 /* only_single_writer */,
 		       0 /* is_cpu_timestamp */,
 		       1 /* local_cpu */,
@@ -206,7 +210,7 @@ static inline void save_remote_msg_timestamp(
 	__write_record(event, is_realtime(t) ? TSK_RT : TSK_BE,
 		       t->pid,
 		       0, REMOTE_IRQ_COUNT, 0,
-		       0, RECORD_OFFSET_TIMESTAMP,
+		       0, RECORD_LITMUS_TIMESTAMP,
 		       0 /* only_single_writer */,
 		       0 /* is_cpu_timestamp */,
 		       0 /* local_cpu */,
