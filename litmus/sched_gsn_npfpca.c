@@ -835,7 +835,13 @@ static void gsnnpfpca_finish_switch(struct task_struct *prev)
 	//int cpu;
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
-	TRACE_TASK(current, "switched away from\n");
+	TRACE_TASK(current, "switched to\n");
+    if (is_realtime(current) && 
+        (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE)))
+    {
+        selective_flush_cache_partitions(entry->cpu,
+            tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
+    }
 //	if (is_realtime(current))
 //	{
 //		TRACE_TASK(current, "lock cache ways 0x%x\n", tsk_rt(current)->job_params.cache_partitions);

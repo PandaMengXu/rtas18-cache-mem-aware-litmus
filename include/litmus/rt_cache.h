@@ -16,6 +16,8 @@ typedef struct  {
 	uint16_t 		used_cp; 		/* currently used cache partition */
 } cpu_cache_entry_t;
 
+void
+selective_flush_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_domain_t *rt);
 /* task t cache_state should be s
  */
 //static inline void

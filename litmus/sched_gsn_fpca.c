@@ -1025,6 +1025,11 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 			set_cache_config(rt, entry->scheduled, CACHE_IN_USE);
 		if (tsk_rt(entry->scheduled)->job_params.cache_state & CACHE_WILL_CLEAR)
 			set_cache_config(rt, entry->scheduled, CACHE_CLEARED);
+        //if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
+        //{
+        //    selective_flush_cache_partitions(entry->cpu,
+        //        tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
+        //}
 	}
 	if (entry->linked && is_realtime(entry->linked))
 	{
@@ -1058,6 +1063,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 
 
 /* _finish_switch - we just finished the switch away from prev
+ *  This function is in the context switch path
+ *  Its execution is counted as context switch overhead
  */
 static void gsnfpca_finish_switch(struct task_struct *prev)
 {
@@ -1066,7 +1073,15 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 //	int cpu;
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
-	TRACE_TASK(current, "switched away from\n");
+	TRACE_TASK(current, "switched to\n");
+    if (is_realtime(current) && 
+        (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE)))
+    {
+	    raw_spin_lock(&gsnfpca_lock);
+        selective_flush_cache_partitions(entry->cpu,
+            tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
+	    raw_spin_unlock(&gsnfpca_lock);
+    }
 //	if (is_realtime(current))
 //	{
 //		TRACE_TASK(current, "lock cache ways 0x%x\n", tsk_rt(current)->job_params.cache_partitions);

@@ -63,16 +63,50 @@ check_cache_status_invariant(int cpu, uint16_t cp_mask)
 			TRACE("[BUG]Lock [P%d], Detect overlap CP: [P%d] used_cp:0x%x, [P%d] used_cp:0x%x",
 				   cpu, i, cache_entry_tmp->used_cp, cpu, cache_entry->used_cp);
 		}
-		if (__get_used_cache_ways_on_cpu(i, &used_cp))
-		{
-			TRACE("[ERROR] get_used_cache_ways_on_cpu %d fails\n", i);
-		}
+		//if (__get_used_cache_ways_on_cpu(i, &used_cp))
+		//{
+		//	TRACE("[ERROR] get_used_cache_ways_on_cpu %d fails\n", i);
+		//}
 		if (used_cp != cache_entry_tmp->used_cp)
 		{
 			TRACE("[BUG] [P%d] cache_entry->used_cp(0x%x) != get_used_cache_ways_on_cpu->used_cp(0x%x)\n",
 				   i, cache_entry_tmp->used_cp, used_cp);
 		}
 
+	}
+}
+
+/* Flush a cache partition for a task tsk only when 
+ * this cache partition was used by other tasks
+ * Because the cache partitions have been reserved for
+ * the task tsk before this function is called,
+ * we don't need to grab lock for this since different 
+ * tasks on different cores use different elements in rt->l2_cps */
+void
+selective_flush_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_domain_t *rt)
+{
+	if (cp_mask != 0)
+	{
+		/* TODO: calculate cache ways to flush */
+		uint16_t cp_mask_to_flush = 0;
+		int i;
+		for (i = 0; i < MAX_CACHE_PARTITIONS; i++)
+		{
+			if (cp_mask & (1 << i))
+			{
+				if (rt->l2_cps[i] != tsk->pid)
+				{
+					cp_mask_to_flush |= (1 << i);
+					rt->l2_cps[i] = tsk->pid;
+				}
+			}
+		}
+		if (cp_mask_to_flush != 0)
+			l2x0_flush_cache_ways(cp_mask_to_flush);
+	}
+	else
+	{
+		TRACE("[BUG] lock cache partition 0 on cpu %d\n", cpu);
 	}
 }
 
@@ -112,38 +146,37 @@ lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_dom
 		TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
 			  cpu, cp_mask);
 	}
-	if (__get_used_cache_ways_on_cpu(cpu, &used_cp))
-	{
-		TRACE("[ERROR] get_used_cache_ways_on_cpu(%d) fails\n", cpu);
-	}
+	//if (__get_used_cache_ways_on_cpu(cpu, &used_cp))
+	//{
+	//	TRACE("[ERROR] get_used_cache_ways_on_cpu(%d) fails\n", cpu);
+	//}
 	if (used_cp != cp_mask)
 	{
 		TRACE("[BUG][P%d] lock cache 0x%x but not in effect now, current cp=0x%x\n",
 			  cpu, cp_mask, used_cp);
 	}
-	if (cp_mask != 0)
-	{
-		/* TODO: calculate cache ways to flush */
-		uint16_t cp_mask_to_flush = 0;
-		int i;
-		for (i = 0; i < MAX_CACHE_PARTITIONS; i++)
-		{
-			if (cp_mask & (1 << i))
-			{
-				if (rt->l2_cps[i] != tsk->pid)
-				{
-					cp_mask_to_flush |= (1 << i);
-					rt->l2_cps[i] = tsk->pid;
-				}
-			}
-		}
-		if (cp_mask_to_flush != 0)
-			l2x0_flush_cache_ways(cp_mask_to_flush);
-	}
-	else
-	{
-		TRACE("[BUG] lock cache partition 0 on cpu %d\n", cpu);
-	}
+//	if (cp_mask != 0)
+//	{
+//		uint16_t cp_mask_to_flush = 0;
+//		int i;
+//		for (i = 0; i < MAX_CACHE_PARTITIONS; i++)
+//		{
+//			if (cp_mask & (1 << i))
+//			{
+//				if (rt->l2_cps[i] != tsk->pid)
+//				{
+//					cp_mask_to_flush |= (1 << i);
+//					rt->l2_cps[i] = tsk->pid;
+//				}
+//			}
+//		}
+//		if (cp_mask_to_flush != 0)
+//			l2x0_flush_cache_ways(cp_mask_to_flush);
+//	}
+//	else
+//	{
+//		TRACE("[BUG] lock cache partition 0 on cpu %d\n", cpu);
+//	}
 	return;
 }
 
@@ -170,15 +203,15 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 		check_cache_status_invariant(cpu, cp_mask);
 		cache_entry->used_cp = 0;
 	}
-	if (__unlock_cache_ways_to_cpu(cpu))
-	{
-		TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
-			  cpu, cp_mask);
-	}
-	if (__get_used_cache_ways_on_cpu(cpu, &used_cp))
-	{
-		TRACE("[ERROR] get_used_cache_ways_on_cpu(%d)\n", cpu);
-	}
+	//if (__unlock_cache_ways_to_cpu(cpu))
+	//{
+	//	TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
+	//		  cpu, cp_mask);
+	//}
+	//if (__get_used_cache_ways_on_cpu(cpu, &used_cp))
+	//{
+	//	TRACE("[ERROR] get_used_cache_ways_on_cpu(%d)\n", cpu);
+	//}
 	if (used_cp)
 	{
 		TRACE("[BUG]unlock cache partitions fails on P%d\n", cpu);
