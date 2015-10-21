@@ -309,6 +309,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 		/* Reset cp to 0 to indicate the cp are unlocked 
  		 * Have to reset, otherwise, we will clear unlocked cp when cache_state
  		 * changes from WILL_USE to WILL_CLEAR to CLEARED */
+		tsk_rt(task)->job_params.cp_prev = tsk_rt(task)->job_params.cache_partitions;
 		tsk_rt(task)->job_params.cache_partitions = 0;
 	}
 	//if (s == CACHE_IN_USE)

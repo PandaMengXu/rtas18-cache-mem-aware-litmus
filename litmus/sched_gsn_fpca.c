@@ -303,17 +303,22 @@ static cpu_entry_t* gsnfpca_get_nearest_available_cpu(cpu_entry_t *start)
 }
 #endif
 
-/* global lock is grabbed by caller */
+/* global cache lock is grabbed by caller */
 static inline uint16_t get_prev_cps(rt_domain_t *rt, pid_t pid)
 {
 	uint16_t prev_cp_mask = 0;
 	int i;
-
-	for (i = 0; i < MAX_NUM_CACHE_PARTITIONS; i++)
+	struct task_struct *task;
+	
+	task = pid_task(find_vpid(pid), PIDTYPE_PID);
+	if (!task)
 	{
-		if (rt->l2_cps[i] == pid)
-			prev_cp_mask |= (1 << i);
+		printk("get_prev_cps: pid is null\n");
+		TRACE("[BUG] pid is null\n");
+		return 0;
 	}
+	prev_cp_mask = tsk_rt(task)->job_params.cp_prev;
+	TRACE_TASK(task, "prev_cp_mask=0x%x\n", prev_cp_mask);
 
 	return prev_cp_mask;
 }
