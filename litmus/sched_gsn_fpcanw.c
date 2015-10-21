@@ -127,6 +127,7 @@ static struct bheap      gsnfpcanw_cpu_heap;
 
 rt_domain_t gsnfpcanw;
 #define gsnfpcanw_lock (gsnfpcanw.ready_lock)
+#define gsnfpcanw_cache_lock (gsnfpcanw.cache_lock)
 
 static struct task_struct standby_tasks;
 static cpu_entry_t* standby_cpus[NR_CPUS];
@@ -1004,6 +1005,30 @@ static void gsnfpcanw_finish_switch(struct task_struct *prev)
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
 	TRACE_TASK(current, "switched away from\n");
+    if (is_realtime(current))
+    {
+        if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
+        {
+	        raw_spin_lock(&gsnfpcanw_cache_lock);
+            selective_flush_cache_partitions(entry->cpu,
+                tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
+	        raw_spin_unlock(&gsnfpcanw_cache_lock);
+        }
+        /*
+        if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
+        {
+            int ret = 0;
+	        raw_spin_lock(&gsnfpcanw_cache_lock);
+            ret = __unlock_cache_ways_to_cpu(entry->cpu);
+	        raw_spin_unlock(&gsnfpcanw_cache_lock);
+            if (ret)
+            {
+                TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
+            		  cpu, cp_mask);
+            }
+        }
+        */
+    }
 //	if (is_realtime(current))
 //	{
 //		TRACE_TASK(current, "lock cache ways 0x%x\n", tsk_rt(current)->job_params.cache_partitions);

@@ -104,6 +104,10 @@
  * __take_ready).
  */
 
+#define SCHED_NO_PREEMPTION			0
+#define SCHED_HAS_PREEMPTION		1
+#define SCHED_NO_LOW_PRIO_CORE		2
+
 #define SCHED_INIT					0 /* init of cpu_entry_t.flag */
 #define SCHED_FORCE_SCHED_OUT		1 /* sched the current task out of the cpu */
 /* cpu_entry_t - maintain the linked and scheduled state
@@ -127,6 +131,7 @@ static struct bheap      gsnfpca_cpu_heap;
 
 rt_domain_t gsnfpca;
 #define gsnfpca_lock (gsnfpca.ready_lock)
+#define gsnfpca_cache_lock (gsnfpca.cache_lock)
 
 static struct task_struct standby_tasks;
 static cpu_entry_t* standby_cpus[NR_CPUS];
@@ -329,8 +334,9 @@ static inline int check_for_preemptions_helper(void)
 	cpu_entry_t *cpu_to_preempt = NULL;
 	int i;
 	struct list_head *iter, *tmp;
-	int has_preemption = 0;
+	int has_preemption = SCHED_NO_PREEMPTION;
 	uint16_t prev_cp_mask = 0;
+	cpu_entry_t* entry;
 
 	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
@@ -343,6 +349,15 @@ static inline int check_for_preemptions_helper(void)
 	}
 
 	TRACE_TASK(task, "check_for_preemptions...\n");
+
+	/* Check if all cores are busy with high tasks 
+	 * No need to check any other tasks if no idle core */
+	entry = lowest_prio_cpu();
+	if (entry->linked && !fp_higher_prio(task, entry->linked))
+	{
+		has_preemption = SCHED_NO_LOW_PRIO_CORE;
+		goto out;
+	}
 
 	/* Check if local cpu is idle first */
 	cpu_to_preempt = &__get_cpu_var(gsnfpca_cpu_entries);
@@ -364,7 +379,6 @@ static inline int check_for_preemptions_helper(void)
 	if (MAX_NUM_CACHE_PARTITIONS - num_used_cache_partitions
 		>= tsk_rt(task)->task_params.num_cache_partitions)
 	{
-		cpu_entry_t* entry = NULL;
 		struct task_struct* cur = NULL;
 		/* Enough idle cache partitions */
 		cache_ok = 1;
@@ -558,13 +572,13 @@ static inline int check_for_preemptions_helper(void)
 	{
 		TRACE_TASK(task, "Cannot preempt, cache_ok=%d, cpu_ok=%d, rt.used_cp_mask=0x%x, need %d cps\n",
 				   cache_ok, cpu_ok, rt->used_cache_partitions, tsk_rt(task)->task_params.num_cache_partitions);
-		has_preemption = 0;
+		has_preemption = SCHED_NO_PREEMPTION;
 		goto out;
 	}
 	/* Preempt preempted tasks */
 	BUG_ON(!cpu_to_preempt);
 	/* Must take_ready before we requeue any task */
-	has_preemption = 1;
+	has_preemption = SCHED_HAS_PREEMPTION;
 	task = __take_ready(&gsnfpca);
 	BUG_ON(!task);
 	if (!only_take_idle_cache)
@@ -629,7 +643,7 @@ static inline int check_for_preemptions_helper(void)
 /* check_for_preemptions for all possible CPUs for gFPca */
 static void check_for_preemptions(void)
 {
-	int has_preemption = 0;
+	int has_preemption = SCHED_NO_PREEMPTION;
 	int num_preemption = 0;
 	int num_blocked_hi_tasks = 0;
 	struct task_struct *cur;
@@ -640,9 +654,11 @@ static void check_for_preemptions(void)
 
 	do {
 		has_preemption = check_for_preemptions_helper();
-		if (has_preemption == 1)
+		if (has_preemption == SCHED_HAS_PREEMPTION)
 			num_preemption++;
-		else
+		if (has_preemption == SCHED_NO_LOW_PRIO_CORE)
+			break;
+		if (has_preemption == SCHED_NO_PREEMPTION)
 		{
 			/* Highest priority task in ready queue cannot preempt
  			 * Save it to blocked_hi_tasks and try the next one in 
@@ -1071,16 +1087,39 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 	cpu_entry_t* 	entry = &__get_cpu_var(gsnfpca_cpu_entries);
 //	int16_t cp_mask;
 //	int cpu;
+	int ret = 0;
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
 	TRACE_TASK(current, "switched to\n");
-    if (is_realtime(current) && 
-        (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE)))
+    if (is_realtime(current))
     {
-	    raw_spin_lock(&gsnfpca_lock);
-        selective_flush_cache_partitions(entry->cpu,
-            tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
-	    raw_spin_unlock(&gsnfpca_lock);
+        if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
+        {
+	        raw_spin_lock(&gsnfpca_cache_lock);
+			ret = __lock_cache_ways_to_cpu(entry->cpu, tsk_rt(current)->job_params.cache_partitions);
+			if (ret)
+			{
+				TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
+					cpu, cp_mask);
+			}
+            selective_flush_cache_partitions(entry->cpu,
+                tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
+	        raw_spin_unlock(&gsnfpca_cache_lock);
+        }
+		
+        if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
+        {
+            int ret = 0;
+	        raw_spin_lock(&gsnfpca_cache_lock);
+            ret = __unlock_cache_ways_to_cpu(entry->cpu);
+	        raw_spin_unlock(&gsnfpca_cache_lock);
+            if (ret)
+            {
+                TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
+            		  cpu, cp_mask);
+            }
+        }
+	
     }
 //	if (is_realtime(current))
 //	{

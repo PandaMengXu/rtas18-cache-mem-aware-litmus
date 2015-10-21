@@ -24,6 +24,7 @@ typedef struct _rt_domain {
 	/* current used cache partitions */
 	uint16_t				used_cache_partitions;
 	/* L2 cache partition status */
+    raw_spinlock_t 			cache_lock;
 	pid_t				l2_cps[MAX_CACHE_PARTITIONS];
 	/* runnable rt tasks are in here */
 	raw_spinlock_t 			ready_lock;

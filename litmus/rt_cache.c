@@ -125,6 +125,7 @@ lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_dom
 {
 	cpu_cache_entry_t *cache_entry;
 	uint16_t used_cp;
+    int ret = 0;
 
 	if (cpu == NO_CPU)
 	{
@@ -141,11 +142,14 @@ lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_dom
 		cache_entry->used_cp = cp_mask;
 	}
 	
-	if (__lock_cache_ways_to_cpu(cpu, cp_mask))
-	{
-		TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
-			  cpu, cp_mask);
-	}
+	//raw_spin_lock(&rt->cache_lock);
+	//ret = __lock_cache_ways_to_cpu(cpu, cp_mask);
+	//raw_spin_unlock(&rt->cache_lock);
+    //if (ret)
+	//{
+	//	TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
+	//		  cpu, cp_mask);
+	//}
 	//if (__get_used_cache_ways_on_cpu(cpu, &used_cp))
 	//{
 	//	TRACE("[ERROR] get_used_cache_ways_on_cpu(%d) fails\n", cpu);
@@ -184,10 +188,11 @@ lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_dom
  * unlock cp_mask for cpu so that other cpus can use cp_mask
  */
 void
-unlock_cache_partitions(int cpu, uint16_t cp_mask)
+unlock_cache_partitions(int cpu, uint16_t cp_mask, rt_domain_t *rt)
 {
 	cpu_cache_entry_t *cache_entry;
 	uint16_t used_cp;
+    int ret;
 
 	if (cpu == NO_CPU)
 	{
@@ -203,11 +208,15 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask)
 		check_cache_status_invariant(cpu, cp_mask);
 		cache_entry->used_cp = 0;
 	}
-	//if (__unlock_cache_ways_to_cpu(cpu))
-	//{
-	//	TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
-	//		  cpu, cp_mask);
-	//}
+    
+	//raw_spin_lock(&rt->cache_lock);
+	//ret = __unlock_cache_ways_to_cpu(cpu);
+	//raw_spin_unlock(&rt->cache_lock);
+    if (ret)
+	{
+		TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
+			  cpu, cp_mask);
+	}
 	//if (__get_used_cache_ways_on_cpu(cpu, &used_cp))
 	//{
 	//	TRACE("[ERROR] get_used_cache_ways_on_cpu(%d)\n", cpu);
@@ -294,7 +303,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
  		 * A task may be preempted when the task have been linked to a CPU but
  		 * have not been scheduled on the CPU */
 		unlock_cache_partitions(tsk_rt(task)->linked_on,
-				tsk_rt(task)->job_params.cache_partitions);
+				tsk_rt(task)->job_params.cache_partitions, rt);
 		rt->used_cache_partitions &= 
 			~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
 		/* Reset cp to 0 to indicate the cp are unlocked 

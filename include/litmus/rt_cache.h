@@ -44,7 +44,7 @@ lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_dom
  * unlock cp_mask for cpu so that other cpus can use cp_mask
  */
 void
-unlock_cache_partitions(int cpu, uint16_t cp_mask);
+unlock_cache_partitions(int cpu, uint16_t cp_mask, rt_domain_t *rt);
 
 /* set_cache_config
  * Check task.cache_state is correct before change it
