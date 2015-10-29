@@ -1188,7 +1188,7 @@ static int __init init_gsn_npfpca(void)
 		}
 	}
 	/* write back all cache */
-	l2x0_flush_cache_ways(0xffff);
+	flush_cache_ways(0xffff);
 	fp_domain_init(&gsnnpfpca, NULL, gsnnpfpca_release_jobs);
 	gsnnpfpca.used_cache_partitions = 0;
 	TRACE("init_gsn_npfpca: rt.used_cp_mask=0x%x\n", gsnnpfpca.used_cache_partitions);

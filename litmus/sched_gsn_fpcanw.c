@@ -1349,7 +1349,7 @@ static int __init init_gsn_fpcanw(void)
 		}
 	}
 	/* write back all cache */
-	l2x0_flush_cache_ways(0xffff);
+	flush_cache_ways(0xffff);
 	fp_domain_init(&gsnfpcanw, NULL, gsnfpcanw_release_jobs);
 	gsnfpcanw.used_cache_partitions = 0;
 	TRACE("init_gsn_fpcanw: rt.used_cp_mask=0x%x\n", gsnfpcanw.used_cache_partitions);

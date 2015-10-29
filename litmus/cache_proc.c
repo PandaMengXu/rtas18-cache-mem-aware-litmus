@@ -25,14 +25,21 @@
 #include <litmus/cache_proc.h>
 #include <litmus/budget.h>
 
+#if defined(CONFIG_ARM)
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/cacheflush.h>
+#endif
 
-
+#if defined(CONFIG_ARM)
 #define UNLOCK_ALL	0x00000000 /* allocation in any way */
-#define LOCK_ALL        (~UNLOCK_ALL)
-#define MAX_NR_WAYS	16
-#define MAX_NR_COLORS	16
+#define LOCK_ALL    0x0000FFFF 
+#define MAX_NR_WAYS	    16
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+#warning TODO: check max number of ways
+#define UNLOCK_ALL  0x00000000
+#define LOCK_ALL    0xFFFFFFFF
+#define MAX_NR_WAYS     16
+#endif
 
 /*
  * unlocked_way[i] : allocation can occur in way i
@@ -98,44 +105,7 @@ u32 way_partitions[9] = {
 	0xffffff00, /* lv C */
 };
 
-u32 prev_lockdown_d_reg[5] = {
-	0x0000FF00,
-	0x0000FF00,
-	0x0000FF00,
-	0x0000FF00,
-	0x000000FF, /* share with level-C */
-};
-
-u32 prev_lockdown_i_reg[5] = {
-	0x0000FF00,
-	0x0000FF00,
-	0x0000FF00,
-	0x0000FF00,
-	0x000000FF, /* share with level-C */
-};
-
-u32 prev_lbm_i_reg[8] = {
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-};
-
-u32 prev_lbm_d_reg[8] = {
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-	0x00000000,
-};
-
+#if defined(CONFIG_ARM)
 static void __iomem *cache_base;
 static void __iomem *lockreg_d;
 static void __iomem *lockreg_i;
@@ -144,13 +114,16 @@ static u32 cache_id;
 
 struct mutex actlr_mutex;
 struct mutex l2x0_prefetch_mutex;
+#endif
 struct mutex lockdown_proc;
+
 static u32 way_partition_min;
 static u32 way_partition_max;
 
 static int zero = 0;
 static int one = 1;
 
+#if defined(CONFIG_ARM)
 static int l1_prefetch_proc;
 static int l2_prefetch_hint_proc;
 static int l2_double_linefill_proc;
@@ -162,11 +135,15 @@ static int l2_data_prefetch_proc;
 #define ld_i_reg(cpu) ({ int __cpu = cpu; \
 			void __iomem *__v = cache_base + L2X0_LOCKDOWN_WAY_I_BASE + \
 			__cpu * L2X0_LOCKDOWN_STRIDE; __v; })
+#endif
 
 int lock_all;
 int nr_lockregs;
+
+#if defined(CONFIG_ARM)
 static raw_spinlock_t cache_lock;
 static raw_spinlock_t prefetch_lock;
+#endif /* CONFIG_ARM */
 
 int pid;
 int rt_pid_min;
@@ -175,10 +152,22 @@ uint16_t new_cp_status;
 uint16_t rt_cp_min;
 uint16_t rt_cp_max;
 
+#if defined(CONFIG_ARM)
 extern void l2x0_flush_all(void);
+#endif
+
+void flush_cache_ways(uint16_t ways)
+{
+#if defined(CONFIG_ARM)
+    l2x0_flush_cache_ways(ways);
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+#warning TODO: implement flush_cache_ways
+#endif
+}
 
 static void print_lockdown_registers(int cpu)
 {
+#if defined(CONFIG_ARM)
 	int i;
 	for (i = 0; i < 4; i++) {
 		printk("P%d Lockdown Data CPU %2d: 0x%04x\n", cpu,
@@ -186,8 +175,12 @@ static void print_lockdown_registers(int cpu)
 		printk("P%d Lockdown Inst CPU %2d: 0x%04x\n", cpu,
 				i, readl_relaxed(ld_i_reg(i)));
 	}
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+#warning TODO: implement print_lockdown_registers
+#endif
 }
 
+#if defined(CONFIG_ARM)
 static void test_lockdown(void *ignore)
 {
 	int i, cpu;
@@ -229,7 +222,9 @@ static void test_lockdown(void *ignore)
 
 	printk("End lockdown test.\n");
 }
+#endif
 
+#if defined(CONFIG_ARM)
 void litmus_setup_lockdown(void __iomem *base, u32 id)
 {
 	cache_base = base;
@@ -252,6 +247,12 @@ void litmus_setup_lockdown(void __iomem *base, u32 id)
 	
 	test_lockdown(NULL);
 }
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+static void litmus_setup_msr(void)
+{
+    mutex_init(&lockdown_proc);
+}
+#endif /* CONFIG_ARM */
 
 int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 {
@@ -269,8 +270,12 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 
 	way_partitions[cpu*2] = ways_mask;
 
+#if defined(CONFIG_ARM)
 	writel_relaxed(~way_partitions[cpu*2], ld_d_reg(cpu));
 	//writel_relaxed(~way_partitions[cpu*2], ld_i_reg(cpu));
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+#warning TODO: implement __lock_cache_ways_to_cpu
+#endif
 	
 out:
 	return ret;
@@ -319,8 +324,14 @@ int __get_used_cache_ways_on_cpu(int cpu, uint16_t *cp_mask)
 	}
 
 	local_irq_save(flags);
+
+#if defined(CONFIG_ARM)
 	ways_mask_d = readl_relaxed(ld_d_reg(cpu));
 	//ways_mask_i = readl_relaxed(ld_i_reg(cpu));
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+#warning TODO: implement __get_used_cache_ways_on_cpu
+#endif
+
 	local_irq_restore(flags);
 
 	//if (ways_mask_i != ways_mask_d) {
@@ -347,8 +358,13 @@ static int __get_cache_ways_to_cpu(int cpu)
 	}
 
 	local_irq_save(flags);
+#if defined(CONFIG_ARM)
 	ways_mask_d = readl_relaxed(ld_d_reg(cpu));
 	//ways_mask_i = readl_relaxed(ld_i_reg(cpu));
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+#warning TODO: implement __get_cache_ways_to_cpu
+#endif
+
 	local_irq_restore(flags);
 
 	//if (ways_mask_i != ways_mask_d) {
@@ -380,8 +396,13 @@ static int __unlock_all_cache_ways(void)
 	for (i = 0; i < 4; ++i) {
 		way_partitions[i*2] = UNLOCK_ALL;
 
+#if defined(CONFIG_ARM)
 		writel_relaxed(~way_partitions[i*2], ld_d_reg(i));
 		writel_relaxed(~way_partitions[i*2], ld_i_reg(i));
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+#warning TODO: implement __unlock_all_cache_ways
+#endif
+
 	}
 
 	return ret;
@@ -394,6 +415,38 @@ int unlock_all_cache_ways(void)
 	mutex_lock(&lockdown_proc);
 
 	ret = __unlock_all_cache_ways();
+
+	mutex_unlock(&lockdown_proc);
+
+	return ret;
+}
+
+static int __lock_all_cache_ways(void)
+{
+	int ret = 0, i;
+
+	for (i = 0; i < 4; ++i) {
+		way_partitions[i*2] = LOCK_ALL;
+
+#if defined(CONFIG_ARM)
+		writel_relaxed(~way_partitions[i*2], ld_d_reg(i));
+		writel_relaxed(~way_partitions[i*2], ld_i_reg(i));
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+#warning TODO: implement __lock_all_cache_ways
+#endif
+
+	}
+
+	return ret;
+}
+
+int lock_all_cache_ways(void)
+{
+	int ret = 0;
+	
+	mutex_lock(&lockdown_proc);
+
+	ret = __lock_all_cache_ways();
 
 	mutex_unlock(&lockdown_proc);
 
@@ -419,12 +472,7 @@ int way_partition_handler(struct ctl_table *table, int write, void __user *buffe
 			printk("0x%08X\n", way_partitions[i]);
 		}
 		for (i = 0; i < 4; i++) {
-
 			__lock_cache_ways_to_cpu(i, way_partitions[i*2]);
-			//writel_relaxed(~way_partitions[i*2], cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
-		//		       i * L2X0_LOCKDOWN_STRIDE);
-			//writel_relaxed(~way_partitions[i*2], cache_base + L2X0_LOCKDOWN_WAY_I_BASE +
-		//		       i * L2X0_LOCKDOWN_STRIDE);
 		}
 	}
 	
@@ -528,21 +576,10 @@ int lock_all_handler(struct ctl_table *table, int write, void __user *buffer,
 		goto out;
 	
 	if (write && lock_all == 1) {
-		for (i = 0; i < nr_lockregs; i++) {
-			writel_relaxed(0xFFFF, cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
-				       i * L2X0_LOCKDOWN_STRIDE);
-			writel_relaxed(0xFFFF, cache_base + L2X0_LOCKDOWN_WAY_I_BASE +
-				       i * L2X0_LOCKDOWN_STRIDE);
-		}
-
+        lock_all_cache_ways();
 	}
 	if (write && lock_all == 0) {
-		for (i = 0; i < nr_lockregs; i++) {
-			writel_relaxed(0x0, cache_base + L2X0_LOCKDOWN_WAY_D_BASE +
-				       i * L2X0_LOCKDOWN_STRIDE);
-			writel_relaxed(0x0, cache_base + L2X0_LOCKDOWN_WAY_I_BASE +
-				       i * L2X0_LOCKDOWN_STRIDE);
-		}
+        unlock_all_cache_ways();
 	}
 	printk("LOCK_ALL HANDLER\n");
 	local_irq_save(flags);
@@ -552,6 +589,8 @@ out:
 	mutex_unlock(&lockdown_proc);
 	return ret;
 }
+
+#if defined(CONFIG_ARM)
 
 /* Operate on the Cortex-A9's ACTLR register */
 #define ACTLR_L2_PREFETCH_HINT	(1 << 1)
@@ -681,9 +720,8 @@ int litmus_l2_data_prefetch_proc_handler(struct ctl_table *table, int write,
 	return ret;
 }
 
-int setup_flusher_proc_handler(struct ctl_table *table, int write,
-		void __user *buffer, size_t *lenp, loff_t *ppos);
-		
+#endif /* CONFIG_ARM */
+
 static struct ctl_table cache_table[] =
 {
 	{
@@ -758,6 +796,7 @@ static struct ctl_table cache_table[] =
 		.extra1		= &way_partition_min,
 		.extra2		= &way_partition_max,
 	},	
+#if defined(CONFIG_ARM)
 	{
 		.procname	= "Call_LC_way",
 		.mode		= 0666,
@@ -767,6 +806,7 @@ static struct ctl_table cache_table[] =
 		.extra1		= &way_partition_min,
 		.extra2		= &way_partition_max,
 	},		
+#endif
 	{
 		.procname	= "lock_all",
 		.mode		= 0666,
@@ -776,6 +816,7 @@ static struct ctl_table cache_table[] =
 		.extra1		= &zero,
 		.extra2		= &one,
 	},
+#if defined(CONFIG_ARM)
 	{
 		.procname	= "l1_prefetch",
 		.mode		= 0644,
@@ -804,6 +845,7 @@ static struct ctl_table cache_table[] =
 		.data		= &l2_data_prefetch_proc,
 		.maxlen		= sizeof(l2_data_prefetch_proc),
 	},
+#endif /* CONFIG_ARM */
 	{
 		.procname	= "task_info",
 		.mode		= 0666,
@@ -840,6 +882,17 @@ static int __init litmus_sysctl_init(void)
 {
 	int ret = 0;
 
+	way_partition_min = 0x00000000;
+	way_partition_max = 0x0000FFFF;
+	rt_pid_min = 1;
+	rt_pid_max = 10000;
+	rt_cp_min = 0x0;
+	rt_cp_max = 0xFFFF;
+	
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    litmus_setup_msr();
+#endif
+
 	printk(KERN_INFO "Registering LITMUS^RT proc sysctl.\n");
 	litmus_sysctls = register_sysctl_table(litmus_dir_table);
 	if (!litmus_sysctls) {
@@ -848,13 +901,6 @@ static int __init litmus_sysctl_init(void)
 		goto out;
 	}
 
-	way_partition_min = 0x00000000;
-	way_partition_max = 0x0000FFFF;
-	rt_pid_min = 1;
-	rt_pid_max = 10000;
-	rt_cp_min = 0x0;
-	rt_cp_max = 0xFFFF;
-	
 out:
 	return ret;
 }

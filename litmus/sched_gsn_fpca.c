@@ -1602,7 +1602,7 @@ static struct litmus_lock* gsnfpca_new_fmlp(void)
 {
 	struct fmlp_semaphore* sem;
 
-	sem = kmalloc(sizeof(*sem), GFPCA_KERNEL);
+	sem = kmalloc(sizeof(*sem), GFP_KERNEL);
 	if (!sem)
 		return NULL;
 
@@ -1772,7 +1772,7 @@ static int __init init_gsn_fpca(void)
 		}
 	}
 	/* write back all cache */
-	l2x0_flush_cache_ways(0xffff);
+	flush_cache_ways(0xffff);
 	fp_domain_init(&gsnfpca, NULL, gsnfpca_release_jobs);
 	gsnfpca.used_cache_partitions = 0;
 	memset(gsnfpca.l2_cps, 0, sizeof(gsnfpca.l2_cps));

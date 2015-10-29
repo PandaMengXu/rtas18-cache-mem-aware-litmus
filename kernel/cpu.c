@@ -727,6 +727,7 @@ void init_cpu_online(const struct cpumask *src)
 	cpumask_copy(to_cpumask(cpu_online_bits), src);
 }
 
+#if !defined(CONFIG_X86_64)
 static ATOMIC_NOTIFIER_HEAD(idle_notifier);
 void idle_notifier_register(struct notifier_block *n)
 {
@@ -745,3 +746,5 @@ void idle_notifier_call_chain(unsigned long val)
 	atomic_notifier_call_chain(&idle_notifier, val, NULL);
 }
 EXPORT_SYMBOL_GPL(idle_notifier_call_chain);
+#endif
+

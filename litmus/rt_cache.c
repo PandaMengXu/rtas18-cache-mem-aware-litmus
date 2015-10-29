@@ -102,7 +102,7 @@ selective_flush_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *
 			}
 		}
 		if (cp_mask_to_flush != 0)
-			l2x0_flush_cache_ways(cp_mask_to_flush);
+			flush_cache_ways(cp_mask_to_flush);
 	}
 	else
 	{
@@ -175,7 +175,7 @@ lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_dom
 //			}
 //		}
 //		if (cp_mask_to_flush != 0)
-//			l2x0_flush_cache_ways(cp_mask_to_flush);
+//			flush_cache_ways(cp_mask_to_flush);
 //	}
 //	else
 //	{
@@ -226,7 +226,7 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask, rt_domain_t *rt)
 		TRACE("[BUG]unlock cache partitions fails on P%d\n", cpu);
 	}
 	//if (cp_mask != 0)
-	//	l2x0_flush_cache_ways(cp_mask);
+	//	flush_cache_ways(cp_mask);
 	//else
 	//{
 	//	TRACE("[BUG] unlock cache partition 0 on cpu %d\n", cpu);
