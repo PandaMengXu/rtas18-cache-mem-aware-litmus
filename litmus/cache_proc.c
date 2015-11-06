@@ -30,80 +30,15 @@
 #include <asm/cacheflush.h>
 #endif
 
-#if defined(CONFIG_ARM)
-#define UNLOCK_ALL	0x00000000 /* allocation in any way */
-#define LOCK_ALL    0x0000FFFF 
-#define MAX_NR_WAYS	    16
-#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-#warning TODO: check max number of ways
-#define UNLOCK_ALL  0x00000000
-#define LOCK_ALL    0xFFFFFFFF
-#define MAX_NR_WAYS     16
-#endif
+#define MAX_CPUS   32 
 
-/*
- * unlocked_way[i] : allocation can occur in way i
- *
- * 0 = allocation can occur in the corresponding way
- * 1 = allocation cannot occur in the corresponding way
- */
-u32 unlocked_way[MAX_NR_WAYS]  = {
-	0xFFFFFFFE, /* way 0 unlocked */
-	0xFFFFFFFD,
-	0xFFFFFFFB,
-	0xFFFFFFF7,
-	0xFFFFFFEF, /* way 4 unlocked */
-	0xFFFFFFDF,
-	0xFFFFFFBF,
-	0xFFFFFF7F,
-	0xFFFFFEFF, /* way 8 unlocked */
-	0xFFFFFDFF,
-	0xFFFFFBFF,
-	0xFFFFF7FF,
-	0xFFFFEFFF, /* way 12 unlocked */
-	0xFFFFDFFF,
-	0xFFFFBFFF,
-	0xFFFF7FFF,
-};
+static u32 lock_all_value = 0xffffffff;
+static u32 unlock_all_value = 0x00000000;
+static u32 max_nr_ways = 16;
+static u32 nr_cpu_sockets = 1;
+static u32 nr_cores_per_socket = 4;
 
-u32 nr_unlocked_way[MAX_NR_WAYS+1]  = {
-	0x0000FFFF, /* all ways are locked. usable = 0*/
-	0x0000FFFE, /* way ~0 unlocked. usable = 1 */
-	0x0000FFFC,
-	0x0000FFF8,
-	0x0000FFF0,
-	0x0000FFE0,
-	0x0000FFC0,
-	0x0000FF80,
-	0x0000FF00,
-	0x0000FE00,
-	0x0000FC00,
-	0x0000F800,
-	0x0000F000,
-	0x0000E000,
-	0x0000C000,
-	0x00008000,
-	0x00000000, /* way ~15 unlocked. usable = 16 */
-};
-
-u32 way_partition[4] = {
-	0xfffffff0, /* cpu0 */
-	0xffffff0f, /* cpu1 */
-	0xfffff0ff, /* cpu2 */
-	0xffff0fff, /* cpu3 */
-};
-
-u32 way_partitions[9] = {
-	0xffff0003, /* cpu0 A */
-	0xffff0003, /* cpu0 B */
-	0xffff000C, /* cpu1 A */
-	0xffff000C, /* cpu1 B */
-	0xffff0030, /* cpu2 A */
-	0xffff0030, /* cpu2 B */
-	0xffff00C0, /* cpu3 A */
-	0xffff00C0, /* cpu3 B */
-	0xffffff00, /* lv C */
-};
+static u32 way_partitions[MAX_CPUS];
 
 #if defined(CONFIG_ARM)
 static void __iomem *cache_base;
@@ -169,14 +104,38 @@ static void print_lockdown_registers(int cpu)
 {
 #if defined(CONFIG_ARM)
 	int i;
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < nr_lockregs; i++) {
 		printk("P%d Lockdown Data CPU %2d: 0x%04x\n", cpu,
 				i, readl_relaxed(ld_d_reg(i)));
 		printk("P%d Lockdown Inst CPU %2d: 0x%04x\n", cpu,
 				i, readl_relaxed(ld_i_reg(i)));
 	}
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-#warning TODO: implement print_lockdown_registers
+#define COS_REG_BASE    0xc90
+#define PQR_REG     0xC8F
+
+    int socket_i, core_i, cpu_i, cos_i;
+    u32 data[2];
+   
+    for (socket_i = 0; socket_i < nr_cpu_sockets; ++socket_i) {
+        for(core_i = 0; core_i < nr_cores_per_socket; ++core_i) {
+            cpu_i = socket_i * nr_cores_per_socket + core_i;
+            cos_i = core_i;
+
+            if (cos_i >= nr_lockregs) {
+                cos_i = nr_lockregs - 1;
+            }
+
+            rdmsr_safe_on_cpu(cpu_i, PQR_REG, &data[0], &data[1]);
+            printk("P%d PQR %d (CPU %d) is using COS %d of cpu socket %d\n",
+                cpu, cpu_i, cpu_i, data[1], socket_i);
+
+            rdmsr_safe_on_cpu(cpu_i, COS_REG_BASE + cos_i, 
+                &data[0], &data[1]);
+            printk("P%d COS %d for CPU %d: 0x%08x\n",
+                cpu, cos_i, cpu_i, data[0]);
+        }
+    }
 #endif
 }
 
@@ -234,9 +193,19 @@ void litmus_setup_lockdown(void __iomem *base, u32 id)
     
 	if (L2X0_CACHE_ID_PART_L310 == (cache_id & L2X0_CACHE_ID_PART_MASK)) {
 		nr_lockregs = 8;
+        max_nr_ways = 16;
+        lock_all_value = 0x0000ffff;
+        unlock_all_value = 0x00000000;
+        nr_cpu_sockets = 1;
+        nr_cores_per_socket = 4;
 	} else {
 		printk("Unknown cache ID!\n");
 		nr_lockregs = 1;
+        max_nr_ways = 16;
+        lock_all_value = 0x0000ffff;
+        unlock_all_value = 0x00000000;
+        nr_cpu_sockets = 1;
+        nr_cores_per_socket = 4;
 	}
 	
 	mutex_init(&actlr_mutex);
@@ -248,33 +217,211 @@ void litmus_setup_lockdown(void __iomem *base, u32 id)
 	test_lockdown(NULL);
 }
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+
+#define CPUID_LEAF_EXT_FEATURES 0x07
+#define CPU_EXT_FEATURE_PQE 0x00008000
+
+#define CPUID_LEAF_CACHE_PARAMS 0x04
+#define CPUID_COUNT_L3_PARAMS   0x03
+
+#define L3_CACHE_LINE_SIZE_MASK 0x00000fff
+#define L3_CACHE_LINE_PARTITION_MASK    0x003ff000
+#define L3_CACHE_LINE_PARTITION_SHIFT    12
+#define L3_CACHE_WAYS_SHIFT 22
+
+#define CPUID_LEAF_CAT 0x10
+#define CPUID_COUNT_CAT_RESOURCE_TYPE 0x00
+#define CPUID_COUNT_CAT_CAPABILITY    0x01
+
+#define CAT_L3_RESOURCE_TID_MASK 0x00000002
+#define CAT_CBM_LEN_MASK         0x0000001f
+#define CAT_CDP_SUPPORT_MASK     0x00000004
+#define CAT_COS_MAX_MASK         0x0000ffff
+
+static void detect_intel_cat_1(void)
+{
+    unsigned int eax, ebx, ecx, edx;
+
+    // check L3 CAT Support
+    cpuid_count(CPUID_LEAF_CAT, CPUID_COUNT_CAT_RESOURCE_TYPE,
+        &eax, &ebx, &ecx, &edx);
+
+    if (ebx & CAT_L3_RESOURCE_TID_MASK) {
+        printk("CAT for L3 cache can be supported\n");
+    }
+
+    // check Capabilities of L3 CAT
+    cpuid_count(CPUID_LEAF_CAT, CPUID_COUNT_CAT_CAPABILITY,
+        &eax, &ebx, &ecx, &edx);
+
+    max_nr_ways = (eax & CAT_CBM_LEN_MASK) + 1;
+
+    nr_lockregs = (edx & CAT_COS_MAX_MASK) + 1;
+}
+
+static void detect_intel_cat_0(void)
+{
+    unsigned int line_size, line_partitions, way_count;
+    unsigned int eax, ebx, ecx, edx;
+
+    cpuid_count(CPUID_LEAF_CACHE_PARAMS, CPUID_COUNT_L3_PARAMS,
+        &eax, &ebx, &ecx, &edx);
+
+    line_size = (ebx & L3_CACHE_LINE_SIZE_MASK) + 1;
+    line_partitions = ((ebx & L3_CACHE_LINE_PARTITION_MASK) 
+        >> L3_CACHE_LINE_PARTITION_SHIFT) + 1;
+    max_nr_ways = (ebx >> L3_CACHE_WAYS_SHIFT) + 1;
+
+    // fixed value 
+    nr_lockregs = 4;
+}
+
+static void detect_intel_cat(void) {
+    int i;
+    unsigned int eax, ebx, ecx, edx;
+    struct cpuinfo_x86  *c;
+
+    //check CAT configuration
+    cpuid_count(CPUID_LEAF_EXT_FEATURES, 0x00,
+        &eax, &ebx, &ecx, &edx);
+
+    if (eax & CPU_EXT_FEATURE_PQE) {
+        detect_intel_cat_1();
+    }
+    else {
+        detect_intel_cat_0();
+    }
+
+    lock_all_value = 0x00000000;
+    unlock_all_value = 0x00000000;
+
+    for (i = 0; i < max_nr_ways; ++i) {
+        lock_all_value |= (1 << i);
+    }
+
+    // number of cpu sockets
+    c = &cpu_data(num_online_cpus() - 1);
+    nr_cpu_sockets = c->phys_proc_id + 1;
+    nr_cores_per_socket = num_online_cpus() / nr_cpu_sockets;
+
+    printk("max_nr_ways = %d\n", max_nr_ways);
+    printk("nr_lockregs = %d, nr_cpu_sockets = %d, nr_cores_per_socket = %d\n", 
+        nr_lockregs, nr_cpu_sockets, nr_cores_per_socket);
+    printk("lock_all = 0x%08x, unlock_all = 0x%08x\n",
+        lock_all_value, unlock_all_value);
+}
+
+static void init_intel_cat(void)
+{
+    struct cpuinfo_x86 *c;
+    int socket_i, core_i, cpu_i;
+    u32 cos_i;
+
+    for(socket_i = 0; socket_i < nr_cpu_sockets; ++socket_i) {
+        for(core_i = 0; core_i < nr_cores_per_socket; ++core_i) {
+            cpu_i = socket_i * nr_cores_per_socket + core_i;
+            c = &cpu_data(cpu_i);
+            cos_i = core_i;
+
+            if (cos_i >= nr_lockregs) {
+                // set to last COS
+                cos_i = nr_lockregs - 1;
+            }
+
+            wrmsr_safe_on_cpu(cpu_i, PQR_REG, 0, cos_i);
+        }
+    }
+}
+
 static void litmus_setup_msr(void)
 {
     mutex_init(&lockdown_proc);
+
+    detect_intel_cat();
+
+    //assign PQR to each COS
+    init_intel_cat();
+
+    way_partition_max = lock_all_value;
 }
 #endif /* CONFIG_ARM */
+
+static int way_mask_sanity_check(u32 ways_mask)
+{
+    int ret = 0;
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    int i;    
+    int count, start, end;
+#endif
+
+    if (ways_mask > way_partition_max) {
+        ret = -EINVAL;
+        goto out;
+    }
+
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    count = 0;
+    start = -1;
+    end = -1;
+    for(i = 0; i < max_nr_ways; ++i) {
+        if (ways_mask & (1 << i)) {
+            count ++;
+
+            if (start == -1) {
+                start = i;
+                end = i;
+            }
+            else {
+                if (i == (end + 1)) {
+                    end = i;
+                }
+                else {
+                    ret = -EINVAL;
+                    goto out;
+                }
+            }
+        }
+    }
+
+    if (count < 2) {
+        ret = -EINVAL;
+    }
+
+#endif
+
+out:
+    return ret;
+}
 
 int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 {
 	int ret = 0;
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    int cos_i;
+#endif
 	
-	if (ways_mask > way_partition_max) {
+    if ((ret = way_mask_sanity_check(ways_mask)) != 0) {
+        goto out;
+    }
+
+	if (cpu < 0 || cpu >= num_online_cpus() || cpu >= MAX_CPUS) {
 		ret = -EINVAL;
 		goto out;
 	}
 
-	if (cpu < 0 || cpu > 4) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	way_partitions[cpu*2] = ways_mask;
+	way_partitions[cpu] = ways_mask;
 
 #if defined(CONFIG_ARM)
-	writel_relaxed(~way_partitions[cpu*2], ld_d_reg(cpu));
+	writel_relaxed(~way_partitions[cpu], ld_d_reg(cpu));
 	//writel_relaxed(~way_partitions[cpu*2], ld_i_reg(cpu));
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-#warning TODO: implement __lock_cache_ways_to_cpu
+    cos_i = cpu % nr_cores_per_socket;
+
+    if (cos_i >= nr_lockregs) {
+        cos_i = nr_lockregs - 1;
+    }
+
+    wrmsr_safe_on_cpu(cpu, COS_REG_BASE + cos_i, way_partitions[cpu], 0);
 #endif
 	
 out:
@@ -317,21 +464,21 @@ int __get_used_cache_ways_on_cpu(int cpu, uint16_t *cp_mask)
 	int ret = 0;
 	unsigned long flags;
 	u32 ways_mask_i, ways_mask_d;
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    u32 data[2];
+    int cos_i;    
+#endif
 
-	if (cpu < 0 || cpu >= NR_CPUS) {
+	if (cpu < 0 || cpu >= num_online_cpus() || cpu >= MAX_CPUS) {
 		ret = -EINVAL;
 		goto out;
 	}
 
+#if defined(CONFIG_ARM)
 	local_irq_save(flags);
 
-#if defined(CONFIG_ARM)
 	ways_mask_d = readl_relaxed(ld_d_reg(cpu));
 	//ways_mask_i = readl_relaxed(ld_i_reg(cpu));
-#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-#warning TODO: implement __get_used_cache_ways_on_cpu
-#endif
-
 	local_irq_restore(flags);
 
 	//if (ways_mask_i != ways_mask_d) {
@@ -340,6 +487,19 @@ int __get_used_cache_ways_on_cpu(int cpu, uint16_t *cp_mask)
 	//	ret = ways_mask_i;
 	//}
 	*cp_mask = ((~ways_mask_d) & CACHE_PARTITIONS_MASK);
+
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    cos_i = cpu % nr_cores_per_socket;
+
+    if (cos_i >= nr_lockregs) {
+        cos_i = nr_lockregs - 1;
+    }
+
+    rdmsr_safe_on_cpu(cpu, COS_REG_BASE + cos_i, &data[0], &data[1]);
+
+    *cp_mask = data[0];
+#endif
+
 out:
 	return ret;
 }
@@ -349,30 +509,39 @@ static int __get_cache_ways_to_cpu(int cpu)
 	int ret = 0;
 	unsigned long flags;
 	u32 ways_mask_i, ways_mask_d;
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    u32 data[2];
+    int cos_i;    
+#endif
 	
-	mutex_lock(&lockdown_proc);
-
-	if (cpu < 0 || cpu > 4) {
+	if (cpu < 0 || cpu >= num_online_cpus() || cpu >= MAX_CPUS) {
 		ret = -EINVAL;
 		goto out;
 	}
 
-	local_irq_save(flags);
 #if defined(CONFIG_ARM)
+	local_irq_save(flags);
 	ways_mask_d = readl_relaxed(ld_d_reg(cpu));
 	//ways_mask_i = readl_relaxed(ld_i_reg(cpu));
-#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-#warning TODO: implement __get_cache_ways_to_cpu
-#endif
 
 	local_irq_restore(flags);
 
 	//if (ways_mask_i != ways_mask_d) {
 	//	printk(KERN_ERR "Ways masks for I and D mismatch I=0x%04x, D=0x%04x\n", ways_mask_i, ways_mask_d);
-	//	ret = ways_mask_i;
+	ret = ways_mask_d;
 	//}
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    cos_i = cpu % nr_cores_per_socket;
+
+    if (cos_i >= nr_lockregs) {
+        cos_i = nr_lockregs - 1;
+    }
+
+    rdmsr_safe_on_cpu(cpu, COS_REG_BASE + cos_i, &data[0], &data[1]);
+
+    ret = data[0];
+#endif
 out:
-	mutex_unlock(&lockdown_proc);
 	return ret;
 }
 
@@ -393,16 +562,8 @@ static int __unlock_all_cache_ways(void)
 {
 	int ret = 0, i;
 
-	for (i = 0; i < 4; ++i) {
-		way_partitions[i*2] = UNLOCK_ALL;
-
-#if defined(CONFIG_ARM)
-		writel_relaxed(~way_partitions[i*2], ld_d_reg(i));
-		writel_relaxed(~way_partitions[i*2], ld_i_reg(i));
-#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-#warning TODO: implement __unlock_all_cache_ways
-#endif
-
+	for (i = 0; i < num_online_cpus(); ++i) {
+        __lock_cache_ways_to_cpu(i, unlock_all_value);
 	}
 
 	return ret;
@@ -425,16 +586,8 @@ static int __lock_all_cache_ways(void)
 {
 	int ret = 0, i;
 
-	for (i = 0; i < 4; ++i) {
-		way_partitions[i*2] = LOCK_ALL;
-
-#if defined(CONFIG_ARM)
-		writel_relaxed(~way_partitions[i*2], ld_d_reg(i));
-		writel_relaxed(~way_partitions[i*2], ld_i_reg(i));
-#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-#warning TODO: implement __lock_all_cache_ways
-#endif
-
+	for (i = 0; i < num_online_cpus(); ++i) {
+        __lock_cache_ways_to_cpu(i, lock_all_value);
 	}
 
 	return ret;
@@ -468,11 +621,11 @@ int way_partition_handler(struct ctl_table *table, int write, void __user *buffe
 
 	if (write) {
 		printk("Way-partition settings:\n");
-		for (i = 0; i < 9; i++) {
+		for (i = 0; i < num_online_cpus(); i++) {
 			printk("0x%08X\n", way_partitions[i]);
 		}
-		for (i = 0; i < 4; i++) {
-			__lock_cache_ways_to_cpu(i, way_partitions[i*2]);
+		for (i = 0; i < num_online_cpus(); i++) {
+			__lock_cache_ways_to_cpu(i, way_partitions[i]);
 		}
 	}
 	
@@ -722,91 +875,28 @@ int litmus_l2_data_prefetch_proc_handler(struct ctl_table *table, int write,
 
 #endif /* CONFIG_ARM */
 
+#define DEFINE_WAY_HANDLER(cpu) \
+	{ \
+		.procname	= "C" #cpu "_LA_way", \
+		.mode		= 0666, \
+		.proc_handler	= way_partition_handler, \
+		.data		= &way_partitions[cpu], \
+		.maxlen		= sizeof(way_partitions[cpu]), \
+		.extra1		= &way_partition_min, \
+		.extra2		= &way_partition_max, \
+	}, \
+	{ \
+		.procname	= "C" #cpu "_LB_way", \
+		.mode		= 0666, \
+		.proc_handler	= way_partition_handler, \
+		.data		= &way_partitions[cpu], \
+		.maxlen		= sizeof(way_partitions[cpu]), \
+		.extra1		= &way_partition_min, \
+		.extra2		= &way_partition_max, \
+	}
+
 static struct ctl_table cache_table[] =
 {
-	{
-		.procname	= "C0_LA_way",
-		.mode		= 0666,
-		.proc_handler	= way_partition_handler,
-		.data		= &way_partitions[0],
-		.maxlen		= sizeof(way_partitions[0]),
-		.extra1		= &way_partition_min,
-		.extra2		= &way_partition_max,
-	},	
-	{
-		.procname	= "C0_LB_way",
-		.mode		= 0666,
-		.proc_handler	= way_partition_handler,
-		.data		= &way_partitions[1],
-		.maxlen		= sizeof(way_partitions[1]),
-		.extra1		= &way_partition_min,
-		.extra2		= &way_partition_max,
-	},	
-	{
-		.procname	= "C1_LA_way",
-		.mode		= 0666,
-		.proc_handler	= way_partition_handler,
-		.data		= &way_partitions[2],
-		.maxlen		= sizeof(way_partitions[2]),
-		.extra1		= &way_partition_min,
-		.extra2		= &way_partition_max,
-	},
-	{
-		.procname	= "C1_LB_way",
-		.mode		= 0666,
-		.proc_handler	= way_partition_handler,
-		.data		= &way_partitions[3],
-		.maxlen		= sizeof(way_partitions[3]),
-		.extra1		= &way_partition_min,
-		.extra2		= &way_partition_max,
-	},
-	{
-		.procname	= "C2_LA_way",
-		.mode		= 0666,
-		.proc_handler	= way_partition_handler,
-		.data		= &way_partitions[4],
-		.maxlen		= sizeof(way_partitions[4]),
-		.extra1		= &way_partition_min,
-		.extra2		= &way_partition_max,
-	},
-	{
-		.procname	= "C2_LB_way",
-		.mode		= 0666,
-		.proc_handler	= way_partition_handler,
-		.data		= &way_partitions[5],
-		.maxlen		= sizeof(way_partitions[5]),
-		.extra1		= &way_partition_min,
-		.extra2		= &way_partition_max,
-	},
-	{
-		.procname	= "C3_LA_way",
-		.mode		= 0666,
-		.proc_handler	= way_partition_handler,
-		.data		= &way_partitions[6],
-		.maxlen		= sizeof(way_partitions[6]),
-		.extra1		= &way_partition_min,
-		.extra2		= &way_partition_max,
-	},
-	{
-		.procname	= "C3_LB_way",
-		.mode		= 0666,
-		.proc_handler	= way_partition_handler,
-		.data		= &way_partitions[7],
-		.maxlen		= sizeof(way_partitions[7]),
-		.extra1		= &way_partition_min,
-		.extra2		= &way_partition_max,
-	},	
-#if defined(CONFIG_ARM)
-	{
-		.procname	= "Call_LC_way",
-		.mode		= 0666,
-		.proc_handler	= way_partition_handler,
-		.data		= &way_partitions[8],
-		.maxlen		= sizeof(way_partitions[8]),
-		.extra1		= &way_partition_min,
-		.extra2		= &way_partition_max,
-	},		
-#endif
 	{
 		.procname	= "lock_all",
 		.mode		= 0666,
@@ -816,6 +906,24 @@ static struct ctl_table cache_table[] =
 		.extra1		= &zero,
 		.extra2		= &one,
 	},
+	{
+		.procname	= "task_info",
+		.mode		= 0666,
+		.proc_handler	= task_info_handler,
+		.data		= &pid,
+		.maxlen		= sizeof(pid),
+		.extra1		= &rt_pid_min,
+		.extra2		= &rt_pid_max,
+	},	
+	{
+		.procname	= "rt_used_cp",
+		.mode		= 0666,
+		.proc_handler	= cache_status_handler,
+		.data		= &new_cp_status,
+		.maxlen		= sizeof(pid),
+		.extra1		= &rt_cp_min,
+		.extra2		= &rt_cp_max,
+	},	
 #if defined(CONFIG_ARM)
 	{
 		.procname	= "l1_prefetch",
@@ -846,25 +954,39 @@ static struct ctl_table cache_table[] =
 		.maxlen		= sizeof(l2_data_prefetch_proc),
 	},
 #endif /* CONFIG_ARM */
-	{
-		.procname	= "task_info",
-		.mode		= 0666,
-		.proc_handler	= task_info_handler,
-		.data		= &pid,
-		.maxlen		= sizeof(pid),
-		.extra1		= &rt_pid_min,
-		.extra2		= &rt_pid_max,
-	},	
-	{
-		.procname	= "rt_used_cp",
-		.mode		= 0666,
-		.proc_handler	= cache_status_handler,
-		.data		= &new_cp_status,
-		.maxlen		= sizeof(pid),
-		.extra1		= &rt_cp_min,
-		.extra2		= &rt_cp_max,
-	},	
-	{ }
+    DEFINE_WAY_HANDLER(0),
+    DEFINE_WAY_HANDLER(1),
+    DEFINE_WAY_HANDLER(2),
+    DEFINE_WAY_HANDLER(3),
+    DEFINE_WAY_HANDLER(4),
+    DEFINE_WAY_HANDLER(5),
+    DEFINE_WAY_HANDLER(6),
+    DEFINE_WAY_HANDLER(7),
+    DEFINE_WAY_HANDLER(8),
+    DEFINE_WAY_HANDLER(9),
+    DEFINE_WAY_HANDLER(10),
+    DEFINE_WAY_HANDLER(11),
+    DEFINE_WAY_HANDLER(12),
+    DEFINE_WAY_HANDLER(13),
+    DEFINE_WAY_HANDLER(14),
+    DEFINE_WAY_HANDLER(15),
+    DEFINE_WAY_HANDLER(16),
+    DEFINE_WAY_HANDLER(17),
+    DEFINE_WAY_HANDLER(18),
+    DEFINE_WAY_HANDLER(19),
+    DEFINE_WAY_HANDLER(20),
+    DEFINE_WAY_HANDLER(21),
+    DEFINE_WAY_HANDLER(22),
+    DEFINE_WAY_HANDLER(23),
+    DEFINE_WAY_HANDLER(24),
+    DEFINE_WAY_HANDLER(25),
+    DEFINE_WAY_HANDLER(26),
+    DEFINE_WAY_HANDLER(27),
+    DEFINE_WAY_HANDLER(28),
+    DEFINE_WAY_HANDLER(29),
+    DEFINE_WAY_HANDLER(30),
+    DEFINE_WAY_HANDLER(31),
+    { }
 };
 
 static struct ctl_table litmus_dir_table[] = {
@@ -881,6 +1003,7 @@ static struct ctl_table_header *litmus_sysctls;
 static int __init litmus_sysctl_init(void)
 {
 	int ret = 0;
+    int index;
 
 	way_partition_min = 0x00000000;
 	way_partition_max = 0x0000FFFF;
@@ -892,6 +1015,13 @@ static int __init litmus_sysctl_init(void)
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
     litmus_setup_msr();
 #endif
+
+    // adjust entry number as online cpu numbers
+    index = 3 + num_online_cpus() * 2;
+#if defined(CONFIG_ARM)
+    index += 4;
+#endif
+    cache_table[index].procname = NULL;
 
 	printk(KERN_INFO "Registering LITMUS^RT proc sysctl.\n");
 	litmus_sysctls = register_sysctl_table(litmus_dir_table);
