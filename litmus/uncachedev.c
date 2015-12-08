@@ -89,7 +89,8 @@ static int litmus_uncache_mmap(struct file* filp, struct vm_area_struct* vma)
 	vma->vm_flags |= VM_DONTEXPAND;
 
 	/* noncached pages are not explicitly locked in memory (for now). */
-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+    /* MX: let us enable the cache */
+	//vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	vma->vm_ops = &litmus_uncache_vm_ops;
 
