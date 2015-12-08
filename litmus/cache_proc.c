@@ -64,9 +64,6 @@ static int one = 1;
 //page coloring
 ///////////////////////////////////////////////////////
 
-#define CACHE_MASK 0x0001f000
-#define CACHE_SHIFT 12
-
 #define PAGES_PER_COLOR 512
 static u32 max_nr_sets = 32;
 
@@ -126,13 +123,6 @@ unsigned int num_by_bitmask_index(unsigned long bitmask, unsigned int index)
     }
 
     return pos;
-}
-
-static inline unsigned int page_color(struct page *page)
-{
-    //TODO: defferent call for converting page address to physical address
-    // under XEN environment
-    return ((page_to_phys(page) & CACHE_MASK) >> CACHE_SHIFT);
 }
 
 static unsigned long smallest_nr_pages(void)

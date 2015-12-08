@@ -23,16 +23,6 @@ void litmus_uncache_vm_close(struct vm_area_struct *vma)
 {
 }
 
-#define CACHE_MASK 0x0001f000
-#define CACHE_SHIFT 12
-
-static inline unsigned int page_color(struct page *page)
-{
-    //TODO: defferent call for converting page address to physical address
-    // under XEN environment
-    return ((page_to_phys(page) & CACHE_MASK) >> CACHE_SHIFT);
-}
-
 int litmus_uncache_vm_fault(struct vm_area_struct* vma,
 							struct vm_fault* vmf)
 {
