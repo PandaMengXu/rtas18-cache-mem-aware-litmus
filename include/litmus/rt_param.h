@@ -103,6 +103,9 @@ struct rt_task {
 	task_class_t	cls;
 	budget_policy_t  budget_policy;  /* ignored by pfair */
 	release_policy_t release_policy;
+
+    unsigned long   page_colors;
+    unsigned int    color_index;
 };
 
 union np_flag {

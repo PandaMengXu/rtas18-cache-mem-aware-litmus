@@ -21,6 +21,16 @@ void flush_cache_ways(uint16_t ways);
 void l2x0_flush_cache_ways(uint16_t ways);
 #endif
 
+unsigned int counting_one_set(unsigned long v);
+unsigned int two_exp(unsigned int e);
+unsigned int num_by_bitmask_index(unsigned long bitmask, unsigned int index);
+
+struct page * get_colored_page(unsigned long color);
+
+extern unsigned long set_partition_min;
+extern unsigned long set_partition_max;
+
+
 #endif
 
 #endif
