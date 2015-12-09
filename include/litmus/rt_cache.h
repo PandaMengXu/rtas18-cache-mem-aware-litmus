@@ -3,6 +3,8 @@
 
 #include <litmus/preempt.h>
 #include <litmus/cache_proc.h>
+#include <asm/paravirt.h>
+#include <litmus/rt_domain.h>
 
 #define TRACE_CACHE_STATE_CHANGE(x, y, task)				\
 	TRACE_TASK(task, "job:%d cp_mask:0x%x %d(%s) -> %d(%s)\n",	\
@@ -10,6 +12,16 @@
 			tsk_rt(task)->job_params.cache_partitions,	\
 			(x), cache_state_name(x),					\
 		    (y), cache_state_name(y))
+
+#define MSR_IA32_COS_REG_BASE               0x00000c90
+#define MSR_IA32_CBM_LENGTH_RTXEN           20
+#define MSR_IA32_CBM_MIN_NUM_BITS_RTXEN     2
+#define MSR_IA32_CBM_ALLSET_RTXEN           0xfffff
+
+typedef struct {
+    unsigned int msr;
+    __u64        val;
+} msr_data_t;
 
 typedef struct  {
 	int 			cpu;
@@ -67,4 +79,10 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask, rt_domain_t *rt);
  */
 void 
 set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s);
+
+
+void rdmsrl_smp(void *data);
+void wrmsrl_smp(void *data);
+int rtxen_cat_set_cbm(int cpu, uint32_t val);
+int _update_cbm_reg(struct task_struct *next);
 #endif

@@ -90,6 +90,7 @@
 #include <litmus/trace.h>
 #include <litmus/sched_trace.h>
 #include <litmus/sched_plugin.h>
+#include <litmus/rt_cache.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
@@ -1913,6 +1914,7 @@ static void finish_task_switch(struct rq *rq, struct task_struct *prev)
 {
 	struct mm_struct *mm = rq->prev_mm;
 	long prev_state;
+    struct task_struct *next = current;
 
 	rq->prev_mm = NULL;
 
@@ -1933,6 +1935,12 @@ static void finish_task_switch(struct rq *rq, struct task_struct *prev)
 	litmus->finish_switch(prev);
 	prev->rt_param.stack_in_use = NO_CPU;
 	perf_event_task_sched_in(prev, current);
+    /* Intel CAT: update CBM reg only when it is valid 
+     * MX: we may not need to check if next is TASK_RUNNING
+     *     because next is the next task to execute */
+    if ( prev != next && is_realtime(next) &&
+         tsk_rt(next)->task_params.set_of_cp_init != 0 )
+        _update_cbm_reg(next);
 	finish_lock_switch(rq, prev);
 	finish_arch_post_lock_switch();
 

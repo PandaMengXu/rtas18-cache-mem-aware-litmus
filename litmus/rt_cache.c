@@ -125,7 +125,7 @@ lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_dom
 {
 	cpu_cache_entry_t *cache_entry;
 	uint16_t used_cp;
-    int ret = 0;
+    //int ret = 0;
 
 	if (cpu == NO_CPU)
 	{
@@ -330,4 +330,62 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 	set_cache_state(task, s);
 //	TRACE_TASK(task, "After change cache_state rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
 //				rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
+}
+
+void wrmsrl_smp(void *data)
+{
+    wrmsrl(((msr_data_t *) data)->msr, ((msr_data_t *) data)->val);
+}
+
+void rdmsrl_smp(void *data)
+{
+    rdmsrl(((msr_data_t *) data)->msr, ((msr_data_t *) data)->val);
+}
+
+/**
+ *  set cbm i register to val on (v)cpu i of domU
+ *  Number of VCPUs is not limited as long as physical CPU number <= CBM Reg number
+ **/
+int rtxen_cat_set_cbm(int cpu, uint32_t val)
+{
+    msr_data_t data;
+
+    /* Check CBM value to set is in valid range */
+    if ( hweight32(val) < MSR_IA32_CBM_MIN_NUM_BITS_RTXEN ||
+         hweight32(val) > MSR_IA32_CBM_LENGTH_RTXEN )
+    {
+        printk("[RTXEN ERR] set_cbm val hweight32(cbm:0x%d) >= %d\n",
+                val, MSR_IA32_CBM_MIN_NUM_BITS_RTXEN);
+        return -EINVAL;
+    }
+
+    printk("[RTXEN INFO] set_cbm: CPU %d cbm to 0x%x\n", cpu, val);
+    data.msr = MSR_IA32_COS_REG_BASE + cpu;
+    data.val = val & MSR_IA32_CBM_MASK;
+    smp_call_function_single(cpu, wrmsrl_smp, &data, 1);
+    /* Do not print if correct to avoid flood the output */
+    //printk("set_cpu_cbm: [P%d] wrmsr 0x%x => 0x%lx (0x%x)\n",
+    //            cpu, data.msr, data.val, val);
+
+    return 0;
+}
+
+
+int _update_cbm_reg(struct task_struct *next)
+{
+    int ret = 0; 
+
+    /* Note: We CAN also use scheduled_on or linked_on to determine
+     * where next is running because LITMUS scheduler uses them to
+     * determine where the task is running; but the next has to be RT task;
+     * otherwise, scheduled_on and linked_on will always be 0
+     * */
+    /*MX: need sync cp param between task_params and job_params */
+    /*
+    printk("[RTXEN DEBUG] next->scheduled_on=%d, next->linked=%d, task_cpu=%d\n",
+            tsk_rt(next)->scheduled_on, tsk_rt(next)->linked_on, task_cpu(next));
+    */
+    ret = rtxen_cat_set_cbm(task_cpu(next), tsk_rt(next)->task_params.set_of_cp_init);
+
+    return ret; 
 }

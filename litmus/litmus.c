@@ -171,6 +171,13 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
     }
     
     tp.color_index = 0;
+	if (hweight_long(tp.set_of_cp_init) < MSR_IA32_CBM_MIN_NUM_BITS_RTXEN ||
+	    hweight_long(tp.set_of_cp_init) > MSR_IA32_CBM_LENGTH_RTXEN)
+	{
+		printk(KERN_INFO "litmus: set_of_cp_init 0x%x is invalid\n",
+			tp.set_of_cp_init);
+		goto out_unlock;
+	}
 
 	target->rt_param.task_params = tp;
 

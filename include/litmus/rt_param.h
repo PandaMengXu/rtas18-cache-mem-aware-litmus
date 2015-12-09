@@ -5,8 +5,11 @@
 #ifndef _LINUX_RT_PARAM_H_
 #define _LINUX_RT_PARAM_H_
 
-/* Litmus time type. */
-typedef unsigned long long lt_t;
+#define MSR_IA32_COS_REG_BASE   	    0x00000c90
+#define MSR_IA32_CBM_MIN_NUM_BITS_RTXEN     2
+#define MSR_IA32_CBM_ALLSET_RTXEN           0xfffff
+#define MSR_IA32_CBM_LENGTH_RTXEN           20
+#define MSR_IA32_CBM_MASK                   0xfffff
 
 typedef enum cache_state {
 	CACHE_INIT       = (1 << 0),  /* When task is first initialized */
@@ -20,6 +23,9 @@ typedef enum cache_state {
 					* hardware */
 	CACHE_INVALID	= (1 << 5),   /* Invalid cache state */
 } cache_state_t;
+
+/* Litmus time type. */
+typedef unsigned long long lt_t;
 
 static inline int lt_after(lt_t a, lt_t b)
 {
@@ -98,6 +104,7 @@ struct rt_task {
 	lt_t		relative_deadline;
 	lt_t		phase;
 	unsigned int	num_cache_partitions;
+	uint32_t	set_of_cp_init;
 	unsigned int	cpu;
 	unsigned int	priority;
 	task_class_t	cls;
