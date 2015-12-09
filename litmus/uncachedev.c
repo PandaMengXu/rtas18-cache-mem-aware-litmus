@@ -32,8 +32,10 @@ int litmus_uncache_vm_fault(struct vm_area_struct* vma,
     unsigned long colors, color;
     unsigned int color_index;
 
-    if (is_realtime(current)) {
-        colors = current->rt_param.task_params.page_colors;
+    // if page_colors equals zero, it means color parameter is not set
+    if (is_realtime(current) && 
+            (colors = current->rt_param.task_params.page_colors) > 0) {
+
         printk(KERN_INFO "colors=0x%010lx\n", colors);
         color_index = current->rt_param.task_params.color_index;
 
