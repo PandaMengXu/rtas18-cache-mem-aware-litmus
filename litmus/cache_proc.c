@@ -32,6 +32,8 @@
 #include <asm/cacheflush.h>
 #endif
 
+#include <linux/uaccess.h>
+
 #define MAX_CPUS   32 
 
 static u32 lock_all_value = 0xffffffff;
@@ -250,6 +252,115 @@ out:
 struct page* get_colored_page(unsigned long color)
 {
     return new_alloc_page_color(color);
+}
+
+int check_coloring_support(struct task_struct *target)
+{
+    unsigned long colors;
+    
+    if (target == NULL) {
+        return 0;
+    }
+
+    colors = tsk_rt(target)->task_params.page_colors;
+
+    if (colors < set_partition_min || colors > set_partition_max) {
+        return 0;
+    }
+
+    return 1;
+}
+
+struct page* pick_one_colored_page(struct task_struct *target)
+{
+    unsigned long colors, color;
+    unsigned int count;
+    unsigned int index;
+    struct page *rPage;
+
+    colors = tsk_rt(target)->task_params.page_colors;
+    index = tsk_rt(target)->task_params.color_index;
+    count = counting_one_set(colors);
+    color = num_by_bitmask_index(colors, index);
+
+    index = (index + 1) % count;
+
+    rPage = get_colored_page(color);
+
+    tsk_rt(target)->task_params.color_index = index;
+
+    printk("Pick a page: PID=%d colors=0x%lx color=%ld\n", target->pid, colors, color);
+
+    return rPage;
+}
+
+static const char *ENVIRON_COLOR_SETTING = "PAGE_COLORS=";
+#define ENV_BUF_LEN 30
+
+int detect_color_setting(struct task_struct *tsk, const char __user *const __user *envp)
+{
+    char env_buf[ENV_BUF_LEN];
+    const char __user *str;
+    int len;
+    int ret = 0;
+    unsigned long page_colors;
+
+    if (!tsk) {
+        return 0;
+    }
+
+    while(true) {
+        if (get_user(str, envp++)) {
+            ret = -EFAULT;
+            break;
+        }
+
+        if (!str) {
+            break;
+        }
+
+        len = strnlen_user(str, ENV_BUF_LEN);
+        if (!len) {
+            ret = -EFAULT;
+            break;
+        }
+
+        if (len > ENV_BUF_LEN) {
+            len = ENV_BUF_LEN;
+        }
+
+        if (copy_from_user(env_buf, str, len)) {
+            ret = -EFAULT;
+            break;
+        }
+
+        env_buf[len - 1] = NULL;
+
+        if (memcmp(env_buf, ENVIRON_COLOR_SETTING, 12) == 0) {
+            if (sscanf(env_buf + 12, "0x%lx", &page_colors) == 1 ||
+                sscanf(env_buf + 12, "%ld", &page_colors) == 1) {
+                printk("Detect page_colors = 0x%lx\n", page_colors);
+
+                tsk->rt_param.task_params.page_colors = page_colors;
+                tsk->rt_param.task_params.color_index = 0;
+            }
+            else {
+                printk("invalid page_colors format: %s\n", env_buf);
+                ret = -EINVAL;
+            }
+
+            break;
+        }
+
+        if (fatal_signal_pending(current)) {
+            ret = -ERESTARTNOHAND;
+            break;
+        }
+
+        cond_resched();
+    } 
+
+    return ret;
 }
 
 struct page *new_alloc_page(struct page *page, unsigned long color, int **x)

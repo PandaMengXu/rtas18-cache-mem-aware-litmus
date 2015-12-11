@@ -57,6 +57,7 @@
 #include <linux/compat.h>
 
 #include <litmus/litmus.h>
+#include <litmus/cache_proc.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -1466,6 +1467,11 @@ static int do_execve_common(const char *filename,
 	bool clear_in_exec;
 	int retval;
 	const struct cred *cred = current_cred();
+
+    /* check environmental variable (e.g., PAGE_COLORS=0xffff)
+     * and initialize page_colors in litmus task_params if exists.
+     */
+    detect_color_setting(current, envp.ptr.native);
 
 	/*
 	 * We move the actual failure in case of RLIMIT_NPROC excess from

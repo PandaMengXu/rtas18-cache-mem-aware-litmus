@@ -32,6 +32,12 @@ unsigned int num_by_bitmask_index(unsigned long bitmask, unsigned int index);
 
 struct page * get_colored_page(unsigned long color);
 
+struct page * pick_one_colored_page(struct task_struct *target);
+int detect_color_setting(struct task_struct *tsk, const char __user *const __user *envp);
+int check_coloring_support(struct task_struct *target);
+
+void dump_mm(struct mm_struct *mm);
+
 extern unsigned long set_partition_min;
 extern unsigned long set_partition_max;
 
