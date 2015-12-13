@@ -66,7 +66,10 @@ static int one = 1;
 //page coloring
 ///////////////////////////////////////////////////////
 
-#define PAGES_PER_COLOR 512
+static int pages_per_color = 1024; // 1K x 4KB pages = 4MB per color
+static int pages_per_color_min = 32;
+static int pages_per_color_max = 1024768; // 1M x 4KB pages = 4GB per color
+
 static u32 max_nr_sets = 32;
 
 unsigned long set_partition_min;
@@ -174,6 +177,8 @@ static void add_page_to_color_list(struct page *page)
     spin_unlock(&cgroup->lock);
 }
 
+static spinlock_t add_pages_lock;
+
 static int do_add_pages(void)
 {
     struct page *page, *page_tmp;
@@ -181,23 +186,28 @@ static int do_add_pages(void)
     unsigned long color;
     int ret = 0;
     int i = 0;
+    int counter[32] = {0,};
     int free_counter = 0;
-    unsigned long counter[128] = {0};
 
-    for (i = 0; i < 1024*100; ++i) {
+    if (!spin_trylock(&add_pages_lock)) {
+        printk("In adding pages already\n");
+        goto out;
+    }
+
+    while(smallest_nr_pages() < pages_per_color) {
         page = alloc_page(GFP_HIGHUSER_MOVABLE);
 
         if (unlikely(!page)) {
             printk(KERN_WARNING "Could not allocate pages.\n");
             ret = -ENOMEM;
-            goto out;
+            goto out_unlock;
         }
 
         color = page_color(page);
-        counter[color]++;
 
-        if (atomic_read(&color_groups[color].nr_pages) < PAGES_PER_COLOR) {
+        if (atomic_read(&color_groups[color].nr_pages) < pages_per_color) {
             add_page_to_color_list(page);
+            counter[color]++;
         }
         else {
             list_add_tail(&page->lru, &free_later);
@@ -205,12 +215,22 @@ static int do_add_pages(void)
         }
     }
 
+    for (i = 0; i < 32; ++i) {
+        if (counter[i] > 0) {
+            printk("pages added to color %d: %d\n", i, counter[i]);
+        }
+    }
+    printk("freed = %d\n", free_counter);
+
     list_for_each_entry_safe(page, page_tmp, &free_later, lru) {
         list_del(&page->lru);
         __free_page(page);
     }
 
     show_nr_pages();
+
+out_unlock:
+    spin_unlock(&add_pages_lock);
 
 out:
     return ret;
@@ -242,9 +262,9 @@ static struct page *new_alloc_page_color(unsigned long color)
 out_unlock:
     spin_unlock(&cgroup->lock);
 out:
-    if (smallest_nr_pages() == 0) {
-        do_add_pages();
-    }
+    //if (smallest_nr_pages() < PAGES_PER_COLOR / 2 ) {
+    //    do_add_pages();
+    //}
 
     return rPage;
 }
@@ -252,6 +272,33 @@ out:
 struct page* get_colored_page(unsigned long color)
 {
     return new_alloc_page_color(color);
+}
+
+static int do_resize_pages(void)
+{
+    unsigned long color;
+    struct page *page, *page_tmp;
+    LIST_HEAD(free_later);
+    
+
+    for (color = 0; color < max_nr_sets; ++color) {
+        while(atomic_read(&color_groups[color].nr_pages) > pages_per_color) {
+            page = new_alloc_page_color(color);
+
+            list_add_tail(&page->lru, &free_later);
+        }    
+    }
+
+    list_for_each_entry_safe(page, page_tmp, &free_later, lru) {
+        list_del(&page->lru);
+        __free_page(page);
+    }
+
+    do_add_pages();
+
+    show_nr_pages();
+
+    return 0;
 }
 
 int check_coloring_support(struct task_struct *target)
@@ -289,7 +336,7 @@ struct page* pick_one_colored_page(struct task_struct *target)
 
     tsk_rt(target)->task_params.color_index = index;
 
-    printk("Pick a page: PID=%d colors=0x%lx color=%ld\n", target->pid, colors, color);
+    //printk("Pick a page: PID=%d colors=0x%lx color=%ld\n", target->pid, colors, color);
 
     return rPage;
 }
@@ -334,7 +381,7 @@ int detect_color_setting(struct task_struct *tsk, const char __user *const __use
             break;
         }
 
-        env_buf[len - 1] = NULL;
+        env_buf[len - 1] = '\0';
 
         if (memcmp(env_buf, ENVIRON_COLOR_SETTING, 12) == 0) {
             if (sscanf(env_buf + 12, "0x%lx", &page_colors) == 1 ||
@@ -410,6 +457,25 @@ out:
     return ret;
 }
 
+static int pages_per_color_handler(struct ctl_table *table, int write, void __user *buffer,
+        size_t *lenp, loff_t *ppos)
+{
+    int ret = 0;
+
+    mutex_lock(&void_lockdown_proc);
+    ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+    if (ret)
+        goto out;
+
+    if (write) {
+        do_resize_pages();
+    }
+
+out:
+    mutex_unlock(&void_lockdown_proc);
+    return ret;
+}
+
 static int __init init_color_groups(void)
 {
     struct color_group *cgroup;
@@ -457,6 +523,8 @@ static int __init init_page_coloring(void)
         set_partition_max, set_partition_max);
 
     mutex_init(&void_lockdown_proc);
+
+    spin_lock_init(&add_pages_lock);
 
     init_color_groups();
     do_add_pages();
@@ -1447,6 +1515,15 @@ static struct ctl_table cache_table[] =
         .data       = &refill_page_pool,
         .maxlen    = sizeof(refill_page_pool),
     },
+    {
+        .procname   = "pages_per_color",
+        .mode       = 0666,
+        .proc_handler = pages_per_color_handler,
+        .data       = &pages_per_color,
+        .maxlen    = sizeof(pages_per_color),
+        .extra1     = &pages_per_color_min,
+        .extra2     = &pages_per_color_max,
+    },
 #if defined(CONFIG_ARM)
 	{
 		.procname	= "l1_prefetch",
@@ -1546,7 +1623,7 @@ static int __init litmus_sysctl_init(void)
 #endif
 
     // adjust entry number as online cpu numbers
-    index = 5 + num_online_cpus();
+    index = 6 + num_online_cpus();
 #if defined(CONFIG_ARM)
     index += 4;
 #endif
