@@ -117,6 +117,7 @@ static void print_lockdown_registers(int cpu)
     int socket_i, core_i, cpu_i, cos_i;
     u32 data[2];
    
+	memset(data, 0, sizeof(data));
     for (socket_i = 0; socket_i < nr_cpu_sockets; ++socket_i) {
         for(core_i = 0; core_i < nr_cores_per_socket; ++core_i) {
             cpu_i = socket_i * nr_cores_per_socket + core_i;
