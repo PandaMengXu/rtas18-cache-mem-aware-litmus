@@ -9,6 +9,7 @@
 #include <linux/module.h>
 
 #include <litmus/litmus.h>
+#include <litmus/cache_proc.h>
 
 /* device for allocating pages not cached by the CPU */
 
@@ -28,8 +29,28 @@ int litmus_uncache_vm_fault(struct vm_area_struct* vma,
 	/* modeled after SG DMA video4linux, but without DMA. */
 	/* (see drivers/media/video/videobuf-dma-sg.c) */
 	struct page *page;
+    unsigned long colors, color;
+    unsigned int color_index;
 
-	page = alloc_page(GFP_USER);
+    // if page_colors equals zero, it means color parameter is not set
+    if (is_realtime(current) && 
+            (colors = current->rt_param.task_params.page_colors) > 0) {
+
+        printk(KERN_INFO "colors=0x%010lx\n", colors);
+        color_index = current->rt_param.task_params.color_index;
+
+        color = num_by_bitmask_index(colors, color_index);
+
+        printk(KERN_INFO "color_index=%ld\n", color);
+
+        page = get_colored_page(color);
+        printk(KERN_INFO "page color=%d\n", page_color(page));
+
+        current->rt_param.task_params.color_index = (color_index + 1) % counting_one_set(colors);
+    }
+    else {
+	    page = alloc_page(GFP_USER);
+    }
 	if (!page)
 		return VM_FAULT_OOM;
 
@@ -48,7 +69,6 @@ static struct vm_operations_struct litmus_uncache_vm_ops = {
 static int litmus_uncache_mmap(struct file* filp, struct vm_area_struct* vma)
 {
 	/* first make sure mapper knows what he's doing */
-
 	/* you can only map the "first" page */
 	if (vma->vm_pgoff != 0)
 		return -EINVAL;
@@ -61,7 +81,8 @@ static int litmus_uncache_mmap(struct file* filp, struct vm_area_struct* vma)
 	vma->vm_flags |= VM_DONTEXPAND;
 
 	/* noncached pages are not explicitly locked in memory (for now). */
-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+    /* MX: let us enable the cache */
+	//vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	vma->vm_ops = &litmus_uncache_vm_ops;
 

@@ -24,6 +24,8 @@
 
 #include <asm/cacheflush.h>
 
+#include <litmus/cache_proc.h>
+
 #ifdef CONFIG_SCHED_CPU_AFFINITY
 #include <litmus/affinity.h>
 #endif
@@ -161,6 +163,14 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 	}
 	if (tp.num_cache_partitions < 0)
 		goto out_unlock;
+
+    if (tp.page_colors < set_partition_min || 
+        tp.page_colors > set_partition_max) {
+        printk(KERN_INFO "litmus: page_color is out of range\n");
+        goto out_unlock;
+    }
+    
+    tp.color_index = 0;
 
 	target->rt_param.task_params = tp;
 

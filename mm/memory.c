@@ -67,6 +67,8 @@
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
 
+#include <litmus/cache_proc.h>
+
 #include "internal.h"
 
 #ifdef LAST_NID_NOT_IN_PAGE_FLAGS
@@ -3241,7 +3243,20 @@ static int do_anonymous_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	/* Allocate our own private page. */
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
-	page = alloc_zeroed_user_highpage_movable(vma, address);
+
+    if (check_coloring_support(current)) {
+        page = pick_one_colored_page(current);
+        if (!page) {
+            printk("NO PAGE\n");
+            goto oom;
+        }
+
+	    clear_user_highpage(page, address);
+    }
+    else {
+	    page = alloc_zeroed_user_highpage_movable(vma, address);
+    }
+
 	if (!page)
 		goto oom;
 	/*
