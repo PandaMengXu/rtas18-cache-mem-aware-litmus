@@ -4,6 +4,10 @@
 #ifdef __KERNEL__
 #include <linux/mm.h>
 
+#if defined(CONFIG_XEN)
+#include <asm/xen/page.h>
+#endif
+
 #if defined(CONFIG_ARM)
 void litmus_setup_lockdown(void __iomem*, u32);
 #endif
@@ -45,7 +49,14 @@ static inline unsigned int page_color(struct page *page)
 {
     //TODO: defferent call for converting page address to physical address
     // under XEN environment
+#if defined(CONFIG_XEN)
+    /* translate pfn to mfn to get the true page color */
+    return (((get_phys_to_machine(page_to_pfn(page)) << PAGE_SHIFT) & CACHE_MASK) >> CACHE_SHIFT);
+    //printk("pfn: %x, mfn: %x, color: %x\n", page_to_pfn(page),
+    //        get_phys_to_machine(page_to_pfn(page)), color);
+#else
     return ((page_to_phys(page) & CACHE_MASK) >> CACHE_SHIFT);
+#endif
 }
 #endif
 
