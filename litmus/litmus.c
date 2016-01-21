@@ -164,13 +164,13 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 	if (tp.num_cache_partitions < 0)
 		goto out_unlock;
 
-    if (tp.page_colors < set_partition_min || 
-        tp.page_colors > set_partition_max) {
-        printk(KERN_INFO "litmus: page_color is out of range\n");
+    if (tp.page_colors != 0)
+    {
+        printk(KERN_INFO "litmus: page_color(0x%x) should only be set with PAGE_COLORS env\n",
+               tp.page_colors);
         goto out_unlock;
     }
     
-    tp.color_index = 0;
 	if (hweight_long(tp.set_of_cp_init) < MSR_IA32_CBM_MIN_NUM_BITS_RTXEN ||
 	    hweight_long(tp.set_of_cp_init) > MSR_IA32_CBM_LENGTH_RTXEN)
 	{
