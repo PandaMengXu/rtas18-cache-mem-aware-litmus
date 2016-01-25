@@ -1471,7 +1471,10 @@ static int do_execve_common(const char *filename,
     /* check environmental variable (e.g., PAGE_COLORS=0xffff)
      * and initialize page_colors in litmus task_params if exists.
      */
-    detect_color_setting(current, envp.ptr.native);
+    if (detect_color_setting(current, envp.ptr.native) != 0) {
+        retval = -ENOMEM;
+        goto out_ret;
+    }
 
 	/*
 	 * We move the actual failure in case of RLIMIT_NPROC excess from

@@ -9,6 +9,7 @@
 #include <linux/time.h>
 #include <linux/mm.h>
 #include <linux/migrate.h>
+#include <linux/bitmap.h>
 
 #include <linux/percpu.h>
 #include <linux/sched.h>
@@ -72,6 +73,7 @@ static int pages_per_color_max = 1024768; // 1M x 4KB pages = 4GB per color
 
 static u32 max_nr_sets = 32;
 
+static unsigned long set_active_mask = 0;
 unsigned long set_partition_min;
 unsigned long set_partition_max;
 
@@ -87,6 +89,28 @@ struct color_group {
 };
 
 static struct color_group *color_groups;
+
+static int __init set_active_mask_setup(char *str)
+{
+    int ret;
+
+    set_active_mask = 0xffffffff;
+    if (sscanf(str, "0x%lx", &set_active_mask) != 1) {
+        ret = bitmap_parselist(str, &set_active_mask, max_nr_sets);
+
+        if (ret != 0) {
+            printk(KERN_ERR "Wrong formatted active_colors: %s\n",
+                str);
+        }
+    }
+
+    printk(KERN_INFO "bootparam: set_active_mask=0x%lx\n", 
+        set_active_mask);
+
+    return 1;
+}
+
+__setup("active_colors=", set_active_mask_setup);
 
 unsigned int counting_one_set(unsigned long v)
 {
@@ -135,9 +159,13 @@ static unsigned long smallest_nr_pages(void)
     unsigned long i, min_pages;
     struct color_group *cgroup;
 
-    cgroup = &color_groups[0];
-    min_pages = atomic_read(&cgroup->nr_pages);
-    for (i = 1; i < max_nr_sets; ++i) {
+    min_pages = pages_per_color;
+
+    for (i = 0; i < max_nr_sets; ++i) {
+        if ((set_active_mask & (1 << i)) == 0) {
+            continue;
+        }
+
         cgroup = &color_groups[i];
         if (atomic_read(&cgroup->nr_pages) < min_pages) {
             min_pages = atomic_read(&cgroup->nr_pages);
@@ -205,7 +233,8 @@ static int do_add_pages(void)
 
         color = page_color(page);
 
-        if (atomic_read(&color_groups[color].nr_pages) < pages_per_color) {
+        if ((set_active_mask & (1 << color)) != 0 &&
+            atomic_read(&color_groups[color].nr_pages) < pages_per_color) {
             add_page_to_color_list(page);
             counter[color]++;
         }
@@ -246,6 +275,11 @@ static struct page *new_alloc_page_color(unsigned long color)
         goto out;
     }
 
+    if ((set_active_mask & (1 << color)) == 0) {
+        TRACE_CUR("Request for deactivated color %lu\n", color);
+        goto out;
+    }
+
     cgroup = &color_groups[color];
     spin_lock(&cgroup->lock);
     if (unlikely(!atomic_read(&cgroup->nr_pages))) {
@@ -282,6 +316,11 @@ static int do_resize_pages(void)
     
 
     for (color = 0; color < max_nr_sets; ++color) {
+
+        if ((set_active_mask & (1 << color)) == 0) {
+            continue;
+        }
+
         while(atomic_read(&color_groups[color].nr_pages) > pages_per_color) {
             page = new_alloc_page_color(color);
 
@@ -327,7 +366,15 @@ struct page* pick_one_colored_page(struct task_struct *target)
 
     colors = tsk_rt(target)->task_params.page_colors;
     index = tsk_rt(target)->task_params.color_index;
+
+    if ((colors & set_active_mask) != colors) {
+        printk("Using deactivated colors 0x%lx\n", colors);
+        colors = colors & set_active_mask;
+    }
+
     count = counting_one_set(colors);
+    index = index % count;
+
     color = num_by_bitmask_index(colors, index);
 
     index = (index + 1) % count;
@@ -387,6 +434,19 @@ int detect_color_setting(struct task_struct *tsk, const char __user *const __use
             if (sscanf(env_buf + 12, "0x%lx", &page_colors) == 1 ||
                 sscanf(env_buf + 12, "%ld", &page_colors) == 1) {
                 printk("Detect page_colors = 0x%lx\n", page_colors);
+
+                if ((page_colors & set_active_mask) != page_colors) {
+                    page_colors = page_colors & set_active_mask;
+                    printk("Deactivated color index found. adjust=0x%lx\n",
+                        page_colors);
+                }
+
+                if (page_colors == 0) {
+                    printk("NOT VALID COLOR SETTING (0x%lx)\n", 
+                        page_colors);
+                    ret = -EINVAL;
+                    break;
+                }
 
                 tsk->rt_param.task_params.page_colors = page_colors;
                 tsk->rt_param.task_params.color_index = 0;
@@ -521,6 +581,18 @@ static int __init init_page_coloring(void)
     printk("SET_MIN=%lu(0x%lx), SET_MAX=%lu(0x%lx)\n",
         set_partition_min, set_partition_min,
         set_partition_max, set_partition_max);
+
+    //set_active_mask should be initialized by boot_param
+    //if not, initialize as max
+    if (set_active_mask == 0) {
+        set_active_mask = set_partition_max;
+    }
+    else {
+        //filter out
+        set_active_mask &= set_partition_max;
+    }
+
+    printk("set_active_mask=0x%lx\n", set_active_mask);
 
     mutex_init(&void_lockdown_proc);
 
