@@ -67,9 +67,9 @@ static int one = 1;
 //page coloring
 ///////////////////////////////////////////////////////
 
-static int pages_per_color = 1024; // 1K x 4KB pages = 4MB per color
-static int pages_per_color_min = 32;
-static int pages_per_color_max = 1024768; // 1M x 4KB pages = 4GB per color
+static int pages_per_color = 0; // set as zero not to crash on boot
+static int pages_per_color_min = 0;
+static int pages_per_color_max = 1048576; // 1M x 4KB pages = 4GB per color
 
 static u32 max_nr_sets = 32;
 
