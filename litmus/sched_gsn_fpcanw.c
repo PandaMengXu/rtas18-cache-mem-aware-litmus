@@ -1329,7 +1329,7 @@ static int __init init_gsn_fpcanw(void)
 
 	bheap_init(&gsnfpcanw_cpu_heap);
 	/* initialize CPU state */
-	for (cpu = 0; cpu < NR_CPUS; cpu++)  {
+	for (cpu = 0; cpu < num_online_cpus(); cpu++)  {
 		entry = &per_cpu(gsnfpcanw_cpu_entries, cpu);
 		gsnfpcanw_cpus[cpu] = entry;
 		entry->cpu 	 = cpu;

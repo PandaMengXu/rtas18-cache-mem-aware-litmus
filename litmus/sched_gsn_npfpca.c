@@ -1168,7 +1168,7 @@ static int __init init_gsn_npfpca(void)
 
 	bheap_init(&gsnnpfpca_cpu_heap);
 	/* initialize CPU state */
-	for (cpu = 0; cpu < NR_CPUS; cpu++)  {
+	for (cpu = 0; cpu < num_online_cpus(); cpu++)  {
 		entry = &per_cpu(gsnnpfpca_cpu_entries, cpu);
 		gsnnpfpca_cpus[cpu] = entry;
 		entry->cpu 	 = cpu;
