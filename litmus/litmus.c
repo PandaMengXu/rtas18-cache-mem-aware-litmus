@@ -26,6 +26,7 @@
 #include <asm/cacheflush.h>
 
 #include <litmus/cache_proc.h>
+#include <litmus/rt_cache.h>
 
 #ifdef CONFIG_SCHED_CPU_AFFINITY
 #include <litmus/affinity.h>
@@ -411,6 +412,29 @@ asmlinkage long sys_flush_cache(struct timespec __user *start, struct timespec _
     }
 
     return ret;
+}
+
+asmlinkage long sys_set_cos_ipi(uint32_t cos_id, uint32_t val,
+                                cycles_t *start, cycles_t *end)
+{
+    int cpu, cos;
+    msr_data_t data;
+
+    if ( cos_id < 0 || cos_id >= MSR_IA32_COS_REG_NUM )
+    {
+        printk("cos_id:%d is out of range [0, %d)",
+                cos_id, MSR_IA32_COS_REG_NUM);
+        return -EINVAL;
+    }
+
+    cpu = cos_id;
+    data.msr = MSR_IA32_COS_REG_BASE + cos_id;
+    data.val = val & MSR_IA32_CBM_MASK;
+    *start = litmus_get_cycles();
+    smp_call_function_single(cpu, wrmsrl_smp, &data, 1);
+    *end = litmus_get_cycles();
+
+    return 0;
 }
 
 /* p is a real-time task. Re-init its state as a best-effort task. */

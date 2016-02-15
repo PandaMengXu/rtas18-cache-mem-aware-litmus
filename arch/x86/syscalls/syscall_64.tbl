@@ -334,8 +334,9 @@
 361	common	release_ts		sys_release_ts
 362	common	get_rt_job_param		sys_get_rt_job_param
 363	common	mark_event		sys_mark_event
-364	common	null_call		sys_null_call
-365 common  flush_cache     sys_flush_cache
+364 common  flush_cache     sys_flush_cache
+365 common	set_cos_ipi		sys_set_cos_ipi
+366	common	null_call		sys_null_call
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact
