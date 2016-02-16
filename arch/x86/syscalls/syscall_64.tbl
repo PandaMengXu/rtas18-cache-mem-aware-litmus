@@ -336,7 +336,8 @@
 363	common	mark_event		sys_mark_event
 364 common  flush_cache     sys_flush_cache
 365 common	set_cos_ipi		sys_set_cos_ipi
-366	common	null_call		sys_null_call
+366 common	set_cos_lock	sys_set_cos_lock
+367	common	null_call		sys_null_call
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

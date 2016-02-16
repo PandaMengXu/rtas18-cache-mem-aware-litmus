@@ -373,4 +373,5 @@
 363	i386	mark_event	sys_mark_event
 364 i386    flush_cache     sys_flush_cache
 365	i386	set_cos_ipi		sys_set_cos_ipi
-366	i386	null_call		sys_null_call
+366	i386	set_cos_lock	sys_set_cos_lock
+367	i386	null_call		sys_null_call

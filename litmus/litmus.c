@@ -14,6 +14,7 @@
 #include <linux/sched/rt.h>
 #include <linux/rwsem.h>
 #include <linux/time.h>
+#include <linux/spinlock.h>
 
 #include <litmus/litmus.h>
 #include <litmus/bheap.h>
@@ -39,6 +40,8 @@
 
 /* Number of RT tasks that exist in the system */
 atomic_t rt_task_count 		= ATOMIC_INIT(0);
+
+spinlock_t cos_lock[MSR_IA32_COS_REG_NUM];
 
 #ifdef CONFIG_RELEASE_MASTER
 /* current master CPU for handling timer IRQs */
@@ -168,7 +171,7 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 
     if (tp.page_colors != 0)
     {
-        printk(KERN_INFO "litmus: page_color(0x%x) should only be set with PAGE_COLORS env\n",
+        printk(KERN_INFO "litmus: page_color(0x%lx) should only be set with PAGE_COLORS env\n",
                tp.page_colors);
         goto out_unlock;
     }
@@ -417,16 +420,18 @@ asmlinkage long sys_flush_cache(struct timespec __user *start, struct timespec _
 asmlinkage long sys_set_cos_ipi(uint32_t cos_id, uint32_t val,
                                 cycles_t __user *usr_start, cycles_t __user *usr_end)
 {
-    int cpu, cos;
+    int cpu;
     msr_data_t data;
-    cycles_t start, end
+    cycles_t start, end;
 
     if ( cos_id < 0 || cos_id >= MSR_IA32_COS_REG_NUM )
     {
-        printk("cos_id:%d is out of range [0, %d)",
+        printk("cos_id:%d is out of range [0, %d)\n",
                 cos_id, MSR_IA32_COS_REG_NUM);
         return -EINVAL;
     }
+
+    printk("[DEBUG] sys_set_cos_ipi is called cos_id=%d val=%x\n", cos_id, val);
 
     cpu = cos_id;
     data.msr = MSR_IA32_COS_REG_BASE + cos_id;
@@ -436,9 +441,59 @@ asmlinkage long sys_set_cos_ipi(uint32_t cos_id, uint32_t val,
     end = litmus_get_cycles();
 
 	if (copy_to_user(usr_start, &start, sizeof(start)))
+    {
+        printk("copy_to_user for start fails\n");
         return -EFAULT;
+    }
 	if (copy_to_user(usr_start, &end, sizeof(end)))
+    {
+        printk("copy_to_user for end fails\n");
         return -EFAULT;
+    }
+
+    return 0;
+}
+
+asmlinkage long sys_set_cos_lock(uint32_t cos_id, uint32_t val,
+                                 cycles_t __user *usr_start, cycles_t __user *usr_end)
+{
+    int cpu, cos;
+    msr_data_t data;
+    cycles_t start, end;
+
+    if ( cos_id < 0 || cos_id >= MSR_IA32_COS_REG_NUM )
+    {
+        printk("cos_id:%d is out of range [0, %d)\n",
+                cos_id, MSR_IA32_COS_REG_NUM);
+        return -EINVAL;
+    }
+
+    printk("[DEBUG] sys_set_cos_lock is called cos_id=%d val=%x\n", cos_id, val);
+    cpu = cos_id;
+    data.msr = MSR_IA32_COS_REG_BASE + cos_id;
+    data.val = val & MSR_IA32_CBM_MASK;
+    start = litmus_get_cycles();
+    /* grab lock before change the cos register */
+    printk("[DEBUG] grab the lock\n");
+    //write_lock(&cos_lock[cos_id]);
+    spin_lock(&cos_lock[cos_id]);
+    wrmsrl_smp(&data);
+    spin_unlock(&cos_lock[cos_id]);
+    //write_unlock(&cos_lock[cos_id]);
+    printk("[DEBUG] release the lock\n");
+
+    end = litmus_get_cycles();
+
+	if (copy_to_user(usr_start, &start, sizeof(start)))
+    {
+        printk("copy_to_user for start fails\n");
+        return -EFAULT;
+    }
+	if (copy_to_user(usr_start, &end, sizeof(end)))
+    {
+        printk("copy_to_user for end fails\n");
+        return -EFAULT;
+    }
 
     return 0;
 }
@@ -783,6 +838,8 @@ static void __init litmus_enable_perfcounters(void)
 
 static int __init _init_litmus(void)
 {
+    int i;
+
 	/*      Common initializers,
 	 *      mode change lock is used to enforce single mode change
 	 *      operation.
@@ -813,6 +870,13 @@ static int __init _init_litmus(void)
 #if defined(CONFIG_CPU_V7) && !defined(CONFIG_HW_PERF_EVENTS)	
 	litmus_enable_perfcounters();
 #endif
+
+    /*Initialize spin lock*/
+    for ( i = 0; i < MSR_IA32_COS_REG_NUM; i++ )
+    {
+        spin_lock_init(&cos_lock[i]);
+        printk("cos_lokc[%d] is initialized\n", i);
+    }
 	
 	return 0;
 }
