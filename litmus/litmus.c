@@ -415,10 +415,11 @@ asmlinkage long sys_flush_cache(struct timespec __user *start, struct timespec _
 }
 
 asmlinkage long sys_set_cos_ipi(uint32_t cos_id, uint32_t val,
-                                cycles_t *start, cycles_t *end)
+                                cycles_t __user *usr_start, cycles_t __user *usr_end)
 {
     int cpu, cos;
     msr_data_t data;
+    cycles_t start, end
 
     if ( cos_id < 0 || cos_id >= MSR_IA32_COS_REG_NUM )
     {
@@ -430,9 +431,14 @@ asmlinkage long sys_set_cos_ipi(uint32_t cos_id, uint32_t val,
     cpu = cos_id;
     data.msr = MSR_IA32_COS_REG_BASE + cos_id;
     data.val = val & MSR_IA32_CBM_MASK;
-    *start = litmus_get_cycles();
+    start = litmus_get_cycles();
     smp_call_function_single(cpu, wrmsrl_smp, &data, 1);
-    *end = litmus_get_cycles();
+    end = litmus_get_cycles();
+
+	if (copy_to_user(usr_start, &start, sizeof(start)))
+        return -EFAULT;
+	if (copy_to_user(usr_start, &end, sizeof(end)))
+        return -EFAULT;
 
     return 0;
 }
