@@ -445,7 +445,7 @@ asmlinkage long sys_set_cos_ipi(uint32_t cos_id, uint32_t val,
         printk("copy_to_user for start fails\n");
         return -EFAULT;
     }
-	if (copy_to_user(usr_start, &end, sizeof(end)))
+	if (copy_to_user(usr_end, &end, sizeof(end)))
     {
         printk("copy_to_user for end fails\n");
         return -EFAULT;
@@ -489,7 +489,7 @@ asmlinkage long sys_set_cos_lock(uint32_t cos_id, uint32_t val,
         printk("copy_to_user for start fails\n");
         return -EFAULT;
     }
-	if (copy_to_user(usr_start, &end, sizeof(end)))
+	if (copy_to_user(usr_end, &end, sizeof(end)))
     {
         printk("copy_to_user for end fails\n");
         return -EFAULT;
