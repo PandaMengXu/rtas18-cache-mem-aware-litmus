@@ -753,6 +753,13 @@ void flush_cache_ways(uint16_t ways)
 #endif
 }
 
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+void flush_cache_for_task(struct task_struct *tsk)
+{
+    printk("TODO: To flush cache for the task");
+}
+#endif
+
 static void print_lockdown_registers(int cpu)
 {
 #if defined(CONFIG_ARM)
@@ -1076,6 +1083,7 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 
     if (cos_i >= nr_lockregs) {
         cos_i = nr_lockregs - 1;
+        printk("[WARN] NO COS register for P%d, use COS %d for P%d\n", cpu, cos_i, cpu);
     }
 
     wrmsr_safe_on_cpu(cpu, COS_REG_BASE + cos_i, way_partitions[cpu], 0);
@@ -1100,7 +1108,11 @@ int lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 
 int __unlock_cache_ways_to_cpu(int cpu)
 {
+#if defined(CONFIG_ARM)
 	return __lock_cache_ways_to_cpu(cpu, 0x0);
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+	return __lock_cache_ways_to_cpu(cpu, lock_all_value);
+#endif
 }
 
 int unlock_cache_ways_to_cpu(int cpu)

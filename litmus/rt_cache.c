@@ -102,7 +102,11 @@ selective_flush_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *
 			}
 		}
 		if (cp_mask_to_flush != 0)
+#if defined(CONFIG_ARM)
 			flush_cache_ways(cp_mask_to_flush);
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+            flush_cache_for_task(tsk);
+#endif
 	}
 	else
 	{
@@ -214,7 +218,7 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask, rt_domain_t *rt)
 	//raw_spin_unlock(&rt->cache_lock);
     if (ret)
 	{
-		TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
+		TRACE("[BUG][P%d] Unlock cache 0x%d fails\n",
 			  cpu, cp_mask);
 	}
 	//if (__get_used_cache_ways_on_cpu(cpu, &used_cp))
@@ -223,7 +227,7 @@ unlock_cache_partitions(int cpu, uint16_t cp_mask, rt_domain_t *rt)
 	//}
 	if (used_cp)
 	{
-		TRACE("[BUG]unlock cache partitions fails on P%d\n", cpu);
+		TRACE("[BUG] Unlock cache partitions fails on P%d\n", cpu);
 	}
 	//if (cp_mask != 0)
 	//	flush_cache_ways(cp_mask);

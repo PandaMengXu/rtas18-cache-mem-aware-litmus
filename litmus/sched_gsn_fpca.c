@@ -1086,6 +1086,9 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 /* _finish_switch - we just finished the switch away from prev
  *  This function is in the context switch path
  *  Its execution is counted as context switch overhead
+ *  Called in kernel/sched/core.c
+ *  NB: Assume the current task's CR3 register has been set up already
+ *  NB: Set the physical register and flush cache are only done in this func
  */
 static void gsnfpca_finish_switch(struct task_struct *prev)
 {
@@ -1297,17 +1300,28 @@ long gsnfpca_complete_job(void)
 	return 0;
 }
 
+/*
+ * gFPca algorithm
+ *  decide the set of cache partitions for a task online
+ *  be responsible to flush the cache
+ *  Do NOT use common context switch logic to set cache partitions
+ *  Force RT task not configured with initial cache partitions to 
+ *      Avoid set the cache control register twice
+ *      Avoid the initial cache partitions overwrite gFPca decision
+ */
 static long gsnfpca_admit_task(struct task_struct* tsk)
 {
-	if (litmus_is_valid_fixed_prio(get_priority(tsk)))
+	if (litmus_is_valid_fixed_prio(get_priority(tsk)) &&  tsk_rt(tsk)->task_params.set_of_cp_init == 0)
 	{
 		INIT_LIST_HEAD(&tsk_rt(tsk)->standby_list);
-    	TRACE_TASK(tsk, "is admitted, num_cp=%d, job.cp_mask=0x%x (should be 0x0)\n",
+    	TRACE_TASK(tsk, "is admitted, num_cp=%d, job.cp_mask=0x%x task_params.set_of_cp_init=0x%x\n",
 				   tsk_rt(tsk)->task_params.num_cache_partitions,
-				   tsk_rt(tsk)->job_params.cache_partitions);
+				   tsk_rt(tsk)->job_params.cache_partitions,
+                   tsk_rt(next)->task_params.set_of_cp_init);
 		return 0;
 	} else {
-        TRACE_TASK(tsk, "is rejected\n");
+        TRACE_TASK(tsk, "is rejected. Reason: invalid rt task or set_of_cp_init(0x%x) !=0\n",
+                   tsk_rt(next)->task_params.set_of_cp_init);
         return -EINVAL;
 	}
 }

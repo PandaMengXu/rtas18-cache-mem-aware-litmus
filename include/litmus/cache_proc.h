@@ -27,6 +27,10 @@ void flush_cache_ways(uint16_t ways);
 void l2x0_flush_cache_ways(uint16_t ways);
 #endif
 
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+void flush_cache_for_task(struct task_struct *tsk);
+#endif
+
 #define CACHE_MASK 0x0001f000
 #define CACHE_SHIFT 12
 
