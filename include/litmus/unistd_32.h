@@ -20,5 +20,7 @@
 #define __NR_get_rt_job_param		__LSC(11)
 #define __NR_mark_event				__LSC(12)
 #define __NR_null_call		__LSC(13)
+#define __NR_flush_cache    __LSC(14)
+
 
 #define NR_litmus_syscalls 16

@@ -372,3 +372,4 @@
 362	i386	get_rt_job_param		sys_get_rt_job_param
 363	i386	mark_event	sys_mark_event
 364	i386	null_call		sys_null_call
+365 i386    flush_cache     sys_flush_cache

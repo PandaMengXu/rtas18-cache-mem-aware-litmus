@@ -30,8 +30,9 @@
 
 #if defined(CONFIG_ARM)
 #include <asm/hardware/cache-l2x0.h>
-#include <asm/cacheflush.h>
 #endif
+
+#include <asm/cacheflush.h>
 
 #include <linux/uaccess.h>
 
@@ -754,9 +755,81 @@ void flush_cache_ways(uint16_t ways)
 }
 
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+
+// 0: exclude the code area from flushing
+static int flushing_code = 1;
+static raw_spinlock_t flushing_code_lock;
+
+int flushing_code_handler(struct ctl_table *table, int write,
+        void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = 0, i;
+	unsigned long flags;
+
+    raw_spin_lock(&flushing_code_lock);	
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+    raw_spin_unlock(&flushing_code_lock);
+
+	return ret;
+}
+
 void flush_cache_for_task(struct task_struct *tsk)
 {
-    printk("TODO: To flush cache for the task");
+    struct vm_area_struct *vma_itr = NULL;
+    int nr_pages = 0;
+
+    raw_spin_lock(&flushing_code_lock);
+
+    down_read(&tsk->mm->mmap_sem);
+    TRACE_TASK(tsk, "FLUSH_CACHE_FOR_TASK\n");
+    vma_itr = tsk->mm->mmap;
+
+    while (vma_itr != NULL) {
+        unsigned int num_pages = 0, i;
+        struct page *cur_page = NULL;
+
+        // Exclude code area if flushing_code == 0
+        if (flushing_code == 1 || (vma_itr->vm_flags & VM_EXEC) == 0) {
+            num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
+
+            for (i = 0; i < num_pages; ++i) {
+                cur_page = follow_page(vma_itr, 
+                        vma_itr->vm_start + PAGE_SIZE * i,
+                        FOLL_GET|FOLL_SPLIT);
+
+                if (IS_ERR(cur_page)) {
+                    continue;
+                }
+    
+                if (!cur_page) {
+                    continue;
+                }
+
+                if (PageReserved(cur_page)) {
+                    TRACE("Reserved Page!\n");
+                    put_page(cur_page);
+                    continue;
+                }
+
+                TRACE_TASK(tsk, "addr: 0x%08x, pfn: 0x%x, "
+                                "_mapcount: %d, _count: %d\n",
+                        vma_itr->vm_start + PAGE_SIZE * i,
+                        __page_to_pfn(cur_page),
+                        page_mapcount(cur_page),
+                        page_count(cur_page));
+
+                clflush_cache_range(cur_page, PAGE_SIZE);
+
+                put_page(cur_page);
+            }
+        }
+
+        vma_itr = vma_itr->vm_next;
+    }
+
+    up_read(&tsk->mm->mmap_sem);
+
+    raw_spin_unlock(&flushing_code_lock);
 }
 #endif
 
@@ -1000,6 +1073,7 @@ static void init_intel_cat(void)
 static void litmus_setup_msr(void)
 {
     mutex_init(&lockdown_proc);
+    raw_spin_lock_init(&flushing_code_lock);
 
     detect_intel_cat();
 
@@ -1609,6 +1683,15 @@ static struct ctl_table cache_table[] =
         .extra1     = &pages_per_color_min,
         .extra2     = &pages_per_color_max,
     },
+    {
+        .procname   = "flushing_code",
+        .mode       = 0666,
+        .proc_handler = flushing_code_handler,
+        .data       = &flushing_code,
+        .maxlen     = sizeof(flushing_code),
+        .extra1     = &zero,
+        .extra2     = &one,
+    },
 #if defined(CONFIG_ARM)
 	{
 		.procname	= "l1_prefetch",
@@ -1708,7 +1791,7 @@ static int __init litmus_sysctl_init(void)
 #endif
 
     // adjust entry number as online cpu numbers
-    index = 6 + num_online_cpus();
+    index = 7 + num_online_cpus();
 #if defined(CONFIG_ARM)
     index += 4;
 #endif

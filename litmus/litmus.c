@@ -390,6 +390,17 @@ asmlinkage long sys_null_call(cycles_t __user *ts)
 	return ret;
 }
 
+asmlinkage long sys_flush_cache()
+{
+    long ret = 0;
+
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    flush_cache_for_task(current);
+#endif
+
+    return ret;
+}
+
 /* p is a real-time task. Re-init its state as a best-effort task. */
 static void reinit_litmus_state(struct task_struct* p, int restore)
 {

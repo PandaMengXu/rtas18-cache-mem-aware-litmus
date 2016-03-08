@@ -33,5 +33,7 @@ __SYSCALL(__NR_get_rt_job_param, sys_get_rt_job_param)
 __SYSCALL(__NR_mark_event, sys_mark_event)
 #define __NR_null_call				__LSC(13)
 __SYSCALL(__NR_null_call, sys_null_call)
+#define __NR_flush_cache            __LSC(14)
+__SYSCALL(__NR_flush_cache, sys_flush_cache)
 
 #define NR_litmus_syscalls 16
