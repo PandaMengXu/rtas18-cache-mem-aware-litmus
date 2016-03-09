@@ -819,6 +819,8 @@ void flush_cache_for_task(struct task_struct *tsk)
             for (i = 0; i < num_pages; ++i) {
                 addr = vma_itr->vm_start + PAGE_SIZE * i;
 
+                /* Walk page table to determine if 
+                 * the addr is mapped to a valid mem */
                 cur_page = follow_page(vma_itr, 
                         addr,
                         FOLL_GET|FOLL_SPLIT);
@@ -862,7 +864,7 @@ void flush_cache_for_task(struct task_struct *tsk)
 
 static void print_lockdown_registers(int cpu)
 {
-#if defined(CONFIG_ARM)
+#if defined(CONFG_ARM)
 	int i;
 	for (i = 0; i < nr_lockregs; i++) {
 		printk("P%d Lockdown Data CPU %2d: 0x%04x\n", cpu,
