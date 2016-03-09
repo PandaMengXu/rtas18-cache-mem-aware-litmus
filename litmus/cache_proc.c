@@ -773,6 +773,29 @@ int flushing_code_handler(struct ctl_table *table, int write,
 	return ret;
 }
 
+#if 0
+static void local_clflush(void *vaddr)
+{
+    asm volatile ("clflush (%0)" :: "r"(vaddr));
+}
+
+static void local_clflush_cache_range(void *vaddr, unsigned int size)
+{
+    unsigned long clflush_mask = boot_cpu_data.x86_clflush_size - 1;
+    void *vend = vaddr + size;
+    void *p;
+
+    mb();
+
+    for (p = (void *)((unsigned long)vaddr & ~clflush_mask);
+      p < vend; p += boot_cpu_data.x86_clflush_size) {
+        local_clflush(p);
+    }
+
+    mb();
+}
+#endif
+
 void flush_cache_for_task(struct task_struct *tsk)
 {
     struct vm_area_struct *vma_itr = NULL;
@@ -787,14 +810,17 @@ void flush_cache_for_task(struct task_struct *tsk)
     while (vma_itr != NULL) {
         unsigned int num_pages = 0, i;
         struct page *cur_page = NULL;
+        unsigned long addr;
 
         // Exclude code area if flushing_code == 0
         if (flushing_code == 1 || (vma_itr->vm_flags & VM_EXEC) == 0) {
             num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
 
             for (i = 0; i < num_pages; ++i) {
+                addr = vma_itr->vm_start + PAGE_SIZE * i;
+
                 cur_page = follow_page(vma_itr, 
-                        vma_itr->vm_start + PAGE_SIZE * i,
+                        addr,
                         FOLL_GET|FOLL_SPLIT);
 
                 if (IS_ERR(cur_page)) {
@@ -813,12 +839,13 @@ void flush_cache_for_task(struct task_struct *tsk)
 
                 TRACE_TASK(tsk, "addr: 0x%08x, pfn: 0x%x, "
                                 "_mapcount: %d, _count: %d\n",
-                        vma_itr->vm_start + PAGE_SIZE * i,
+                        addr,
                         __page_to_pfn(cur_page),
                         page_mapcount(cur_page),
                         page_count(cur_page));
 
-                clflush_cache_range(cur_page, PAGE_SIZE);
+                clflush_cache_range(addr, PAGE_SIZE);
+                //local_clflush_cache_range((void *)addr, PAGE_SIZE);
 
                 put_page(cur_page);
             }

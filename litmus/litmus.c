@@ -13,6 +13,7 @@
 #include <linux/stop_machine.h>
 #include <linux/sched/rt.h>
 #include <linux/rwsem.h>
+#include <linux/time.h>
 
 #include <litmus/litmus.h>
 #include <litmus/bheap.h>
@@ -390,13 +391,24 @@ asmlinkage long sys_null_call(cycles_t __user *ts)
 	return ret;
 }
 
-asmlinkage long sys_flush_cache()
+asmlinkage long sys_flush_cache(struct timespec __user *start, struct timespec __user *end)
 {
     long ret = 0;
-
+    struct timespec ts1, ts2;
+    
+    getnstimeofday(&ts1);
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
     flush_cache_for_task(current);
 #endif
+    getnstimeofday(&ts2);
+
+    if (start != NULL) {
+        copy_to_user(start, &ts1, sizeof(struct timespec));
+    }
+
+    if (end != NULL) {
+        copy_to_user(end, &ts2, sizeof(struct timespec));
+    }
 
     return ret;
 }
