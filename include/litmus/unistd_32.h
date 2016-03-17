@@ -19,9 +19,9 @@
 #define __NR_release_ts		__LSC(10)
 #define __NR_get_rt_job_param		__LSC(11)
 #define __NR_mark_event				__LSC(12)
-#define __NR_flush_cache    __LSC(13)
+#define __NR_flush_cache            __LSC(13)
 #define __NR_set_cos_ipi		    __LSC(14)
 #define __NR_set_cos_lock		    __LSC(15)
-#define __NR_null_call		__LSC(16)
+#define __NR_null_call		        __LSC(16)
 
 #define NR_litmus_syscalls 20

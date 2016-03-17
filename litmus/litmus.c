@@ -400,6 +400,7 @@ asmlinkage long sys_flush_cache(struct timespec __user *start, struct timespec _
     long ret = 0;
     struct timespec ts1, ts2;
     
+    printk(KERN_DEBUG "sys_flush_cache is called\n");
     getnstimeofday(&ts1);
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
     flush_cache_for_task(current);
@@ -431,7 +432,7 @@ asmlinkage long sys_set_cos_ipi(uint32_t cos_id, uint32_t val,
         return -EINVAL;
     }
 
-    printk("[DEBUG] sys_set_cos_ipi is called cos_id=%d val=%x\n", cos_id, val);
+    printk(KERN_DEBUG "sys_set_cos_ipi is called cos_id=%d val=%x\n", cos_id, val);
 
     cpu = cos_id;
     data.msr = MSR_IA32_COS_REG_BASE + cos_id;
@@ -457,7 +458,7 @@ asmlinkage long sys_set_cos_ipi(uint32_t cos_id, uint32_t val,
 asmlinkage long sys_set_cos_lock(uint32_t cos_id, uint32_t val,
                                  cycles_t __user *usr_start, cycles_t __user *usr_end)
 {
-    int cpu, cos;
+    int cpu;
     msr_data_t data;
     cycles_t start, end;
 
@@ -468,20 +469,18 @@ asmlinkage long sys_set_cos_lock(uint32_t cos_id, uint32_t val,
         return -EINVAL;
     }
 
-    printk("[DEBUG] sys_set_cos_lock is called cos_id=%d val=%x\n", cos_id, val);
+    printk(KERN_DEBUG "sys_set_cos_lock is called cos_id=%d val=%x\n", cos_id, val);
     cpu = cos_id;
     data.msr = MSR_IA32_COS_REG_BASE + cos_id;
     data.val = val & MSR_IA32_CBM_MASK;
+
     start = litmus_get_cycles();
     /* grab lock before change the cos register */
-    printk("[DEBUG] grab the lock\n");
     //write_lock(&cos_lock[cos_id]);
     spin_lock(&cos_lock[cos_id]);
     wrmsrl_smp(&data);
     spin_unlock(&cos_lock[cos_id]);
     //write_unlock(&cos_lock[cos_id]);
-    printk("[DEBUG] release the lock\n");
-
     end = litmus_get_cycles();
 
 	if (copy_to_user(usr_start, &start, sizeof(start)))
