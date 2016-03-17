@@ -811,7 +811,7 @@ void flush_cache_for_task(struct task_struct *tsk)
         unsigned int num_pages = 0, i;
         struct page *cur_page = NULL;
         unsigned long addr;
-
+#if 0
         // Exclude code area if flushing_code == 0
         if (flushing_code == 1 || (vma_itr->vm_flags & VM_EXEC) == 0) {
             num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
@@ -852,7 +852,9 @@ void flush_cache_for_task(struct task_struct *tsk)
                 put_page(cur_page);
             }
         }
-
+#else
+        clflush_cache_range(vma_itr->vm_start, vma_itr->vm_end - vma_itr->vm_start);
+#endif
         vma_itr = vma_itr->vm_next;
     }
 
