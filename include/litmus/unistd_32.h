@@ -23,5 +23,8 @@
 #define __NR_flush_cache            __LSC(14)
 #define __NR_set_cos_ipi		    __LSC(15)
 #define __NR_set_cos_lock		    __LSC(16)
+#define __NR_rt_wrmsr   		    __LSC(17)
+#define __NR_rt_rdmsr	    	    __LSC(18)
+#define __NR_rt_wbinvd	    	    __LSC(19)
 
 #define NR_litmus_syscalls 20

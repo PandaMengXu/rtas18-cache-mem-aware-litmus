@@ -497,6 +497,45 @@ asmlinkage long sys_set_cos_lock(uint32_t cos_id, uint32_t val,
     return 0;
 }
 
+asmlinkage long sys_rt_wrmsr(int cpu, uint32_t msr, uint64_t val)
+{
+    msr_data_t data;
+
+    printk(KERN_DEBUG "sys_rt_wrmsr is called cpu=%d msr=0x%08x val=0x%016lx\n", cpu, msr, val);
+
+    data.msr = msr;
+    data.val = val;
+    smp_call_function_single(cpu, wrmsrl_smp, &data, 1);
+
+    return 0;
+}
+
+asmlinkage long sys_rt_rdmsr(int cpu, uint32_t msr, uint64_t __user *val)
+{
+    msr_data_t data;
+
+    printk(KERN_DEBUG "sys_rt_wrmsr is called cpu=%d msr=0x%08x val=0x%016lx\n", cpu, msr, val);
+
+    data.msr = msr;
+    data.val = val;
+    smp_call_function_single(cpu, rdmsrl_smp, &data, 1);
+
+	if (copy_to_user(val, &data.val, sizeof(data.val)))
+    {
+        printk("copy_to_user for val fails\n");
+        return -EFAULT;
+    }
+
+    return 0;   
+}
+
+asmlinkage long sys_rt_wbinvd(void)
+{
+    printk(KERN_DEBUG "sys_rt_wbinvd is called\n");
+    __asm__ ("wbinvd");   
+    return 0;
+}
+
 /* p is a real-time task. Re-init its state as a best-effort task. */
 static void reinit_litmus_state(struct task_struct* p, int restore)
 {

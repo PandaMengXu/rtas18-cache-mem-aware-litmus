@@ -39,5 +39,10 @@ __SYSCALL(__NR_flush_cache, sys_flush_cache)
 __SYSCALL(__NR_set_cos_ipi, sys_set_cos_ipi)
 #define __NR_set_cos_lock            __LSC(16)
 __SYSCALL(__NR_set_cos_lock, sys_set_cos_lock)
-
+#define __NR_rt_wrmsr               __LSC(17)
+__SYSCALL(__NR_rt_wrmsr, sys_rt_wrmsr)
+#define __NR_rt_rdmsr               __LSC(18)
+__SYSCALL(__NR_rt_rdmsr, sys_rt_rdmsr)
+#define __NR_rt_wbinvd               __LSC(19)
+__SYSCALL(__NR_rt_wbinvd, sys_rt_wbinvd)
 #define NR_litmus_syscalls 20

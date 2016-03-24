@@ -338,6 +338,9 @@
 365 common  flush_cache     sys_flush_cache
 366 common	set_cos_ipi		sys_set_cos_ipi
 367 common	set_cos_lock	sys_set_cos_lock
+368 common	rt_wrmsr        sys_rt_wrmsr
+369 common	rt_rdmsr        sys_rt_rdmsr
+370 common	rt_wbinvd       sys_rt_wbinvd
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

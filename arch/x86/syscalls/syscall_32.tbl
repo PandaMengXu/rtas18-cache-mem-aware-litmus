@@ -375,3 +375,6 @@
 365 i386    flush_cache     sys_flush_cache
 366	i386	set_cos_ipi		sys_set_cos_ipi
 367	i386	set_cos_lock	sys_set_cos_lock
+368	i386	rt_wrmsr	    sys_rt_wrmsr
+369	i386	rt_rdmsr	    sys_rt_rdmsr
+370	i386	rt_wbinvd	    sys_rt_wbinvd
