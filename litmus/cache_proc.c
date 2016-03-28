@@ -811,50 +811,54 @@ void flush_cache_for_task(struct task_struct *tsk)
         unsigned int num_pages = 0, i;
         struct page *cur_page = NULL;
         unsigned long addr;
+
+        if ( !(vma_itr->vm_flags & (VM_READ | VM_WRITE)) )
+            goto next;
+        if ( !flushing_code && (vma_itr->vm_flags & VM_EXEC) )
+            goto next;
 #if 0
-        // Exclude code area if flushing_code == 0
-        if (flushing_code == 1 || (vma_itr->vm_flags & VM_EXEC) == 0) {
-            num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
+        num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
 
-            for (i = 0; i < num_pages; ++i) {
-                addr = vma_itr->vm_start + PAGE_SIZE * i;
+        for (i = 0; i < num_pages; ++i) {
+            addr = vma_itr->vm_start + PAGE_SIZE * i;
 
-                /* Walk page table to determine if 
-                 * the addr is mapped to a valid mem */
-                cur_page = follow_page(vma_itr, 
-                        addr,
-                        FOLL_GET|FOLL_SPLIT);
+            /* Walk page table to determine if 
+             * the addr is mapped to a valid mem */
+            cur_page = follow_page(vma_itr, 
+                    addr,
+                    FOLL_GET|FOLL_SPLIT);
 
-                if (IS_ERR(cur_page)) {
-                    continue;
-                }
-    
-                if (!cur_page) {
-                    continue;
-                }
-
-                if (PageReserved(cur_page)) {
-                    TRACE("Reserved Page!\n");
-                    put_page(cur_page);
-                    continue;
-                }
-
-                TRACE_TASK(tsk, "addr: 0x%08x, pfn: 0x%x, "
-                                "_mapcount: %d, _count: %d\n",
-                        addr,
-                        __page_to_pfn(cur_page),
-                        page_mapcount(cur_page),
-                        page_count(cur_page));
-
-                clflush_cache_range(addr, PAGE_SIZE);
-                //local_clflush_cache_range((void *)addr, PAGE_SIZE);
-
-                put_page(cur_page);
+            if (IS_ERR(cur_page)) {
+                continue;
             }
+
+            if (!cur_page) {
+                continue;
+            }
+
+            if (PageReserved(cur_page)) {
+                TRACE("Reserved Page!\n");
+                put_page(cur_page);
+                continue;
+            }
+
+            TRACE_TASK(tsk, "addr: 0x%08x, pfn: 0x%x, "
+                            "_mapcount: %d, _count: %d\n",
+                    addr,
+                    __page_to_pfn(cur_page),
+                    page_mapcount(cur_page),
+                    page_count(cur_page));
+
+            clflush_cache_range(addr, PAGE_SIZE);
+            //local_clflush_cache_range((void *)addr, PAGE_SIZE);
+
+            put_page(cur_page);
         }
 #else   /* NB: This one may not be working */
+        printk(KERN_DEBUG "flush [0x%016lx - 0x%016lx)\n", vma_itr->vm_start, vma_itr->vm_end);
         clflush_cache_range(vma_itr->vm_start, vma_itr->vm_end - vma_itr->vm_start);
 #endif
+next:
         vma_itr = vma_itr->vm_next;
     }
 
