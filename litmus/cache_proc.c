@@ -855,7 +855,7 @@ void flush_cache_for_task(struct task_struct *tsk)
             put_page(cur_page);
         }
 #else   /* NB: This one may not be working */
-        printk(KERN_DEBUG "flush [0x%016lx - 0x%016lx)\n", vma_itr->vm_start, vma_itr->vm_end);
+        dbprintk("flush [0x%016lx - 0x%016lx)\n", vma_itr->vm_start, vma_itr->vm_end);
         clflush_cache_range(vma_itr->vm_start, vma_itr->vm_end - vma_itr->vm_start);
 #endif
 next:
@@ -873,9 +873,9 @@ static void print_lockdown_registers(int cpu)
 #if defined(CONFG_ARM)
 	int i;
 	for (i = 0; i < nr_lockregs; i++) {
-		printk("P%d Lockdown Data CPU %2d: 0x%04x\n", cpu,
+		dbprintk("P%d Lockdown Data CPU %2d: 0x%04x\n", cpu,
 				i, readl_relaxed(ld_d_reg(i)));
-		printk("P%d Lockdown Inst CPU %2d: 0x%04x\n", cpu,
+		dbprintk("P%d Lockdown Inst CPU %2d: 0x%04x\n", cpu,
 				i, readl_relaxed(ld_i_reg(i)));
 	}
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)

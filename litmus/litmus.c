@@ -400,7 +400,7 @@ asmlinkage long sys_flush_cache(struct timespec __user *start, struct timespec _
     long ret = 0;
     struct timespec ts1, ts2;
     
-    printk(KERN_DEBUG "sys_flush_cache is called\n");
+    dbprintk("sys_flush_cache is called\n");
     getnstimeofday(&ts1);
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
     flush_cache_for_task(current);
@@ -432,7 +432,7 @@ asmlinkage long sys_set_cos_ipi(uint32_t cos_id, uint32_t val,
         return -EINVAL;
     }
 
-    printk(KERN_DEBUG "sys_set_cos_ipi is called cos_id=%d val=%x\n", cos_id, val);
+    dbprintk("sys_set_cos_ipi is called cos_id=%d val=%x\n", cos_id, val);
 
     cpu = cos_id;
     data.msr = MSR_IA32_COS_REG_BASE + cos_id;
@@ -469,7 +469,7 @@ asmlinkage long sys_set_cos_lock(uint32_t cos_id, uint32_t val,
         return -EINVAL;
     }
 
-    printk(KERN_DEBUG "sys_set_cos_lock is called cos_id=%d val=%x\n", cos_id, val);
+    dbprintk("sys_set_cos_lock is called cos_id=%d val=%x\n", cos_id, val);
     cpu = cos_id;
     data.msr = MSR_IA32_COS_REG_BASE + cos_id;
     data.val = val & MSR_IA32_CBM_MASK;
@@ -501,7 +501,7 @@ asmlinkage long sys_rt_wrmsr(int cpu, uint32_t msr, uint64_t val)
 {
     msr_data_t data;
 
-    printk(KERN_DEBUG "sys_rt_wrmsr is called cpu=%d msr=0x%08x val=0x%016lx\n", cpu, msr, val);
+    dbprintk("sys_rt_wrmsr is called cpu=%d msr=0x%08x val=0x%016lx\n", cpu, msr, val);
 
     data.msr = msr;
     data.val = val;
@@ -514,7 +514,7 @@ asmlinkage long sys_rt_rdmsr(int cpu, uint32_t msr, uint64_t __user *val)
 {
     msr_data_t data;
 
-    printk(KERN_DEBUG "sys_rt_wrmsr is called cpu=%d msr=0x%08x val=0x%016lx\n", cpu, msr, val);
+    dbprintk("sys_rt_wrmsr is called cpu=%d msr=0x%08x val=0x%016lx\n", cpu, msr, val);
 
     data.msr = msr;
     data.val = val;
@@ -531,7 +531,7 @@ asmlinkage long sys_rt_rdmsr(int cpu, uint32_t msr, uint64_t __user *val)
 
 asmlinkage long sys_rt_wbinvd(void)
 {
-    printk(KERN_DEBUG "sys_rt_wbinvd is called\n");
+    dbprintk("sys_rt_wbinvd is called\n");
     __asm__ ("wbinvd");   
     return 0;
 }

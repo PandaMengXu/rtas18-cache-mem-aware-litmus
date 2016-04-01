@@ -12,6 +12,12 @@
 extern atomic_t release_master_cpu;
 #endif
 
+#ifdef CONFIG_LITMUS_DEBUG
+#define dbprintk(format, args...)   printk(KERN_DEBUG format, ##args)
+#else
+#define dbprintk(format, args...)
+#endif
+
 /* in_list - is a given list_head queued on some list?
  */
 static inline int in_list(struct list_head* list)
