@@ -38,7 +38,9 @@
 
 #define MAX_CPUS   32 
 
-static u32 lock_all_value = 0xffffffff;
+/** MX: The value should depend on platform
+ *  TODO: make this value configurable */
+static u32 lock_all_value = 0xfffff;
 static u32 unlock_all_value = 0x00000000;
 static u32 max_nr_ways = 16;
 static u32 nr_cpu_sockets = 1;
@@ -750,6 +752,7 @@ void flush_cache_ways(uint16_t ways)
 #if defined(CONFIG_ARM)
     l2x0_flush_cache_ways(ways);
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    dbprintk("ERROR: x86 cannot flush a cache way\n");
 #warning TODO: implement flush_cache_ways
 #endif
 }
@@ -1133,6 +1136,16 @@ static int way_mask_sanity_check(u32 ways_mask)
     }
 
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    /** must use at least 2 cache partitions
+     */
+    if ( hweight_long(ways_mask) < 2 )
+    {
+        dbprintk("ways_mask (0x%x) must have at least 2 bits set\n", ways_mask);
+        ret = -EINVAL;
+    }
+    /** Check if cache partitions are continuous
+      * Unnecessary */
+    /**
     count = 0;
     start = -1;
     end = -1;
@@ -1159,6 +1172,7 @@ static int way_mask_sanity_check(u32 ways_mask)
     if (count < 2) {
         ret = -EINVAL;
     }
+    */
 
 #endif
 
@@ -1173,6 +1187,7 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
     int cos_i;
 #endif
 	
+    dbprintk("%s: CPs set to 0x%x on P%d\n", ways_mask, cpu);
     if ((ret = way_mask_sanity_check(ways_mask)) != 0) {
         goto out;
     }
@@ -1184,10 +1199,13 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 
 	way_partitions[cpu] = ways_mask;
 
+    dbprintk("Cache partitions 0x%x are initialized as available\n", way_partitions[cpu]);
 #if defined(CONFIG_ARM)
 	writel_relaxed(~way_partitions[cpu], ld_d_reg(cpu));
 	//writel_relaxed(~way_partitions[cpu*2], ld_i_reg(cpu));
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    dbprintk("%s: set P%d cos to 0x%x...\n", __FUNCTION__,
+             cpu, way_partitions[cpu]);
     cos_i = cpu % nr_cores_per_socket;
 
     if (cos_i >= nr_lockregs) {
@@ -1217,6 +1235,7 @@ int lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 
 int __unlock_cache_ways_to_cpu(int cpu)
 {
+    dbprintk("%s: P%d\n", __FUNCTION__, cpu);
 #if defined(CONFIG_ARM)
 	return __lock_cache_ways_to_cpu(cpu, 0x0);
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)

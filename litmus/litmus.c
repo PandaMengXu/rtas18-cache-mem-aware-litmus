@@ -668,9 +668,11 @@ static int do_plugin_switch(void *_plugin)
 
 	/* don't switch if there are active real-time tasks */
 	if (atomic_read(&rt_task_count) == 0) {
+		printk(KERN_INFO "Deactive LITMUS^RT plugin %s...\n", plugin->plugin_name);
 		ret = litmus->deactivate_plugin();
 		if (0 != ret)
 			goto out;
+		printk(KERN_INFO "Active LITMUS^RT plugin %s...\n", plugin->plugin_name);
 		ret = plugin->activate_plugin();
 		if (0 != ret) {
 			printk(KERN_INFO "Can't activate %s (%d).\n",

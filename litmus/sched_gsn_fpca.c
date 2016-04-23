@@ -346,7 +346,10 @@ static inline int check_for_preemptions_helper(void)
 	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
 	/*TODO: Assume no priority inversion first! */
+    dbprintk("%s:peek_ready task...\n", __FUNCTION__);
 	task = __peek_ready(&gsnfpca);
+    dbprintk("%s: peek_ready task %s(%d)\n", __FUNCTION__,
+              task->comm, task->pid);
 
 	if (!task) {
 		TRACE_TASK(task, "No ready RT tasks\n");
@@ -885,6 +888,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	struct task_struct* next = NULL;
 	cache_state_t cache_state_prev;
 
+    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+              prev->comm, prev->pid);
 #ifdef CONFIG_RELEASE_MASTER
 	/* Bail out early if we are the release master.
 	 * The release master never schedules any real-time tasks.
@@ -1093,10 +1098,10 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 static void gsnfpca_finish_switch(struct task_struct *prev)
 {
 	cpu_entry_t* 	entry = &__get_cpu_var(gsnfpca_cpu_entries);
-//	int16_t cp_mask;
-//	int cpu;
 	int ret = 0;
 
+    dbprintk("%s(%d) switch to %s(%d)\n", prev->comm, prev->pid,
+              current->comm, current->pid);
 	entry->scheduled = is_realtime(current) ? current : NULL;
 	TRACE_TASK(current, "switched to\n");
     if (is_realtime(current))
@@ -1176,6 +1181,7 @@ static void gsnfpca_task_new(struct task_struct * t, int on_rq, int is_scheduled
 	unsigned long 		flags;
 	cpu_entry_t* 		entry;
 
+	dbprintk("%s: gsn fpca: task new %d\n", __FUNCTION__, t->pid);
 	TRACE("gsn fpca: task new %d\n", t->pid);
 
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
@@ -1220,6 +1226,8 @@ static void gsnfpca_task_wake_up(struct task_struct *task)
 	unsigned long flags;
 	lt_t now;
 
+    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+             task->comm, task->pid);
 	TRACE_TASK(task, "wake_up at %llu, cp_mask=0x%x\n",
 			   litmus_clock(), tsk_rt(task)->job_params.cache_partitions);
 
@@ -1239,6 +1247,8 @@ static void gsnfpca_task_block(struct task_struct *t)
 	rt_domain_t *rt = &gsnfpca;
 	unsigned long flags;
 
+    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+             t->comm, t->pid);
 	TRACE_TASK(t, "block at %llu, cp_mask=0x%x\n",
 			   litmus_clock(), tsk_rt(t)->job_params.cache_partitions);
 
@@ -1261,6 +1271,8 @@ static void gsnfpca_task_exit(struct task_struct * t)
 	rt_domain_t *rt = &gsnfpca;
 	unsigned long flags;
 
+    dbprintk("%s: task %s (%d) called\n", __FUNCTION__,
+              t->comm, t->pid);
 	/* unlink if necessary */
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
 	/* Unlock cache before unlink task since
@@ -1289,6 +1301,7 @@ static void gsnfpca_task_exit(struct task_struct * t)
  */
 long gsnfpca_complete_job(void)
 {
+    dbprintk("%s: called\n", __FUNCTION__);
 	TRACE_TASK(current, "%s/%d/%d completed\n",
 			   current->comm, current->pid, tsk_rt(current)->job_params.job_no);
 	/* Mark that we do not excute anymore */
@@ -1311,6 +1324,8 @@ long gsnfpca_complete_job(void)
  */
 static long gsnfpca_admit_task(struct task_struct* tsk)
 {
+    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+             tsk->comm, tsk->pid);
 	if (litmus_is_valid_fixed_prio(get_priority(tsk)) &&  tsk_rt(tsk)->task_params.set_of_cp_init == 0)
 	{
 		INIT_LIST_HEAD(&tsk_rt(tsk)->standby_list);
@@ -1326,338 +1341,10 @@ static long gsnfpca_admit_task(struct task_struct* tsk)
 	}
 }
 
-/* NOTE: GSN-FPCA does not consider LITMUS_LOCKING protocol now! 
- * The code under CONFIG_LITMUS_LOCKING should never be used! */
-#ifdef CONFIG_LITMUS_LOCKING
-
-#include <litmus/fdso.h>
-
-/* called with IRQs off */
-static void set_priority_inheritance(struct task_struct* t, struct task_struct* prio_inh)
-{
-	int linked_on;
-	int check_preempt = 0;
-
-	raw_spin_lock(&gsnfpca_lock);
-
-	TRACE_TASK(t, "inherits priority from %s/%d\n", prio_inh->comm, prio_inh->pid);
-	tsk_rt(t)->inh_task = prio_inh;
-
-	linked_on  = tsk_rt(t)->linked_on;
-
-	/* If it is scheduled, then we need to reorder the CPU heap. */
-	if (linked_on != NO_CPU) {
-		TRACE_TASK(t, "%s: linked  on %d\n",
-			   __FUNCTION__, linked_on);
-		/* Holder is scheduled; need to re-order CPUs.
-		 * We can't use heap_decrease() here since
-		 * the cpu_heap is ordered in reverse direction, so
-		 * it is actually an increase. */
-		bheap_delete(cpu_lower_prio, &gsnfpca_cpu_heap,
-			    gsnfpca_cpus[linked_on]->hn);
-		bheap_insert(cpu_lower_prio, &gsnfpca_cpu_heap,
-			    gsnfpca_cpus[linked_on]->hn);
-	} else {
-		/* holder may be queued: first stop queue changes */
-		raw_spin_lock(&gsnfpca.release_lock);
-		if (is_queued(t)) {
-			TRACE_TASK(t, "%s: is queued\n",
-				   __FUNCTION__);
-			/* We need to update the position of holder in some
-			 * heap. Note that this could be a release heap if we
-			 * budget enforcement is used and this job overran. */
-			check_preempt =
-				!bheap_decrease(fp_ready_order,
-					       tsk_rt(t)->heap_node);
-		} else {
-			/* Nothing to do: if it is not queued and not linked
-			 * then it is either sleeping or currently being moved
-			 * by other code (e.g., a timer interrupt handler) that
-			 * will use the correct priority when enqueuing the
-			 * task. */
-			TRACE_TASK(t, "%s: is NOT queued => Done.\n",
-				   __FUNCTION__);
-		}
-		raw_spin_unlock(&gsnfpca.release_lock);
-
-		/* If holder was enqueued in a release heap, then the following
-		 * preemption check is pointless, but we can't easily detect
-		 * that case. If you want to fix this, then consider that
-		 * simply adding a state flag requires O(n) time to update when
-		 * releasing n tasks, which conflicts with the goal to have
-		 * O(log n) merges. */
-		if (check_preempt) {
-			/* heap_decrease() hit the top level of the heap: make
-			 * sure preemption checks get the right task, not the
-			 * potentially stale cache. */
-			bheap_uncache_min(fp_ready_order,
-					 &gsnfpca.ready_queue);
-			check_for_preemptions();
-		}
-	}
-
-	raw_spin_unlock(&gsnfpca_lock);
-}
-
-/* called with IRQs off */
-static void clear_priority_inheritance(struct task_struct* t)
-{
-	raw_spin_lock(&gsnfpca_lock);
-
-	/* A job only stops inheriting a priority when it releases a
-	 * resource. Thus we can make the following assumption.*/
-	BUG_ON(tsk_rt(t)->scheduled_on == NO_CPU);
-
-	TRACE_TASK(t, "priority restored\n");
-	tsk_rt(t)->inh_task = NULL;
-
-	/* Check if rescheduling is necessary. We can't use heap_decrease()
-	 * since the priority was effectively lowered. */
-	unlink(t);
-	gsnfpca_job_arrival(t);
-
-	raw_spin_unlock(&gsnfpca_lock);
-}
-
-
-/* ******************** FMLP support ********************** */
-
-/* struct for semaphore with priority inheritance */
-struct fmlp_semaphore {
-	struct litmus_lock litmus_lock;
-
-	/* current resource holder */
-	struct task_struct *owner;
-
-	/* highest-priority waiter */
-	struct task_struct *hp_waiter;
-
-	/* FIFO queue of waiting tasks */
-	wait_queue_head_t wait;
-};
-
-static inline struct fmlp_semaphore* fmlp_from_lock(struct litmus_lock* lock)
-{
-	return container_of(lock, struct fmlp_semaphore, litmus_lock);
-}
-
-/* caller is responsible for locking */
-struct task_struct* find_hp_waiter(struct fmlp_semaphore *sem,
-				   struct task_struct* skip)
-{
-	struct list_head	*pos;
-	struct task_struct 	*queued, *found = NULL;
-
-	list_for_each(pos, &sem->wait.task_list) {
-		queued  = (struct task_struct*) list_entry(pos, wait_queue_t,
-							   task_list)->private;
-
-		/* Compare task prios, find high prio task. */
-		if (queued != skip && fp_higher_prio(queued, found))
-			found = queued;
-	}
-	return found;
-}
-
-int gsnfpca_fmlp_lock(struct litmus_lock* l)
-{
-	struct task_struct* t = current;
-	struct fmlp_semaphore *sem = fmlp_from_lock(l);
-	wait_queue_t wait;
-	unsigned long flags;
-
-	if (!is_realtime(t))
-		return -EPERM;
-
-	/* prevent nested lock acquisition --- not supported by FMLP */
-	if (tsk_rt(t)->num_locks_held)
-		return -EBUSY;
-
-	spin_lock_irqsave(&sem->wait.lock, flags);
-
-	if (sem->owner) {
-		/* resource is not free => must suspend and wait */
-
-		init_waitqueue_entry(&wait, t);
-
-		/* FIXME: interruptible would be nice some day */
-		set_task_state(t, TASK_UNINTERRUPTIBLE);
-
-		__add_wait_queue_tail_exclusive(&sem->wait, &wait);
-
-		/* check if we need to activate priority inheritance */
-		if (fp_higher_prio(t, sem->hp_waiter)) {
-			sem->hp_waiter = t;
-			if (fp_higher_prio(t, sem->owner))
-				set_priority_inheritance(sem->owner, sem->hp_waiter);
-		}
-
-		TS_LOCK_SUSPEND;
-
-		/* release lock before sleeping */
-		spin_unlock_irqrestore(&sem->wait.lock, flags);
-
-		/* We depend on the FIFO order.  Thus, we don't need to recheck
-		 * when we wake up; we are guaranteed to have the lock since
-		 * there is only one wake up per release.
-		 */
-
-		schedule();
-
-		TS_LOCK_RESUME;
-
-		/* Since we hold the lock, no other task will change
-		 * ->owner. We can thus check it without acquiring the spin
-		 * lock. */
-		BUG_ON(sem->owner != t);
-	} else {
-		/* it's ours now */
-		sem->owner = t;
-
-		spin_unlock_irqrestore(&sem->wait.lock, flags);
-	}
-
-	tsk_rt(t)->num_locks_held++;
-
-	return 0;
-}
-
-int gsnfpca_fmlp_unlock(struct litmus_lock* l)
-{
-	struct task_struct *t = current, *next;
-	struct fmlp_semaphore *sem = fmlp_from_lock(l);
-	unsigned long flags;
-	int err = 0;
-
-	spin_lock_irqsave(&sem->wait.lock, flags);
-
-	if (sem->owner != t) {
-		err = -EINVAL;
-		goto out;
-	}
-
-	tsk_rt(t)->num_locks_held--;
-
-	/* check if there are jobs waiting for this resource */
-	next = __waitqueue_remove_first(&sem->wait);
-	if (next) {
-		/* next becomes the resouce holder */
-		sem->owner = next;
-		TRACE_CUR("lock ownership passed to %s/%d\n", next->comm, next->pid);
-
-		/* determine new hp_waiter if necessary */
-		if (next == sem->hp_waiter) {
-			TRACE_TASK(next, "was highest-prio waiter\n");
-			/* next has the highest priority --- it doesn't need to
-			 * inherit.  However, we need to make sure that the
-			 * next-highest priority in the queue is reflected in
-			 * hp_waiter. */
-			sem->hp_waiter = find_hp_waiter(sem, next);
-			if (sem->hp_waiter)
-				TRACE_TASK(sem->hp_waiter, "is new highest-prio waiter\n");
-			else
-				TRACE("no further waiters\n");
-		} else {
-			/* Well, if next is not the highest-priority waiter,
-			 * then it ought to inherit the highest-priority
-			 * waiter's priority. */
-			set_priority_inheritance(next, sem->hp_waiter);
-		}
-
-		/* wake up next */
-		wake_up_process(next);
-	} else
-		/* becomes available */
-		sem->owner = NULL;
-
-	/* we lose the benefit of priority inheritance (if any) */
-	if (tsk_rt(t)->inh_task)
-		clear_priority_inheritance(t);
-
-out:
-	spin_unlock_irqrestore(&sem->wait.lock, flags);
-
-	return err;
-}
-
-int gsnfpca_fmlp_close(struct litmus_lock* l)
-{
-	struct task_struct *t = current;
-	struct fmlp_semaphore *sem = fmlp_from_lock(l);
-	unsigned long flags;
-
-	int owner;
-
-	spin_lock_irqsave(&sem->wait.lock, flags);
-
-	owner = sem->owner == t;
-
-	spin_unlock_irqrestore(&sem->wait.lock, flags);
-
-	if (owner)
-		gsnfpca_fmlp_unlock(l);
-
-	return 0;
-}
-
-void gsnfpca_fmlp_free(struct litmus_lock* lock)
-{
-	kfree(fmlp_from_lock(lock));
-}
-
-static struct litmus_lock_ops gsnfpca_fmlp_lock_ops = {
-	.close  = gsnfpca_fmlp_close,
-	.lock   = gsnfpca_fmlp_lock,
-	.unlock = gsnfpca_fmlp_unlock,
-	.deallocate = gsnfpca_fmlp_free,
-};
-
-static struct litmus_lock* gsnfpca_new_fmlp(void)
-{
-	struct fmlp_semaphore* sem;
-
-	sem = kmalloc(sizeof(*sem), GFP_KERNEL);
-	if (!sem)
-		return NULL;
-
-	sem->owner   = NULL;
-	sem->hp_waiter = NULL;
-	init_waitqueue_head(&sem->wait);
-	sem->litmus_lock.ops = &gsnfpca_fmlp_lock_ops;
-
-	return &sem->litmus_lock;
-}
-
-/* **** lock constructor **** */
-
-
-static long gsnfpca_allocate_lock(struct litmus_lock **lock, int type,
-				 void* __user unused)
-{
-	int err = -ENXIO;
-
-	/* GSN-FPCA currently only supports the FMLP for global resources. */
-	switch (type) {
-
-	case FMLP_SEM:
-		/* Flexible Multiprocessor Locking Protocol */
-		*lock = gsnfpca_new_fmlp();
-		if (*lock)
-			err = 0;
-		else
-			err = -ENOMEM;
-		break;
-
-	};
-
-	return err;
-}
-
-#endif
-
 static struct domain_proc_info gsnfpca_domain_proc_info;
 static long gsnfpca_get_domain_proc_info(struct domain_proc_info **ret)
 {
+    dbprintk("%s: called\n", __FUNCTION__);
 	*ret = &gsnfpca_domain_proc_info;
 	return 0;
 }
@@ -1699,6 +1386,7 @@ static long gsnfpca_activate_plugin(void)
 	int cpu;
 	cpu_entry_t *entry;
 
+    dbprintk("%s: called\n", __FUNCTION__);
 	bheap_init(&gsnfpca_cpu_heap);
 #ifdef CONFIG_RELEASE_MASTER
 	gsnfpca.release_master = atomic_read(&release_master_cpu);
@@ -1731,6 +1419,7 @@ static long gsnfpca_activate_plugin(void)
 
 static long gsnfpca_deactivate_plugin(void)
 {
+    dbprintk("%s: called\n", __FUNCTION__);
 	destroy_domain_proc_info(&gsnfpca_domain_proc_info);
 	return 0;
 }
@@ -1749,9 +1438,6 @@ static struct sched_plugin gsn_fpca_plugin __cacheline_aligned_in_smp = {
 	.activate_plugin	= gsnfpca_activate_plugin,
 	.deactivate_plugin	= gsnfpca_deactivate_plugin,
 	.get_domain_proc_info	= gsnfpca_get_domain_proc_info,
-#ifdef CONFIG_LITMUS_LOCKING
-	.allocate_lock		= gsnfpca_allocate_lock,
-#endif
 };
 
 
@@ -1767,6 +1453,7 @@ static int __init init_gsn_fpca(void)
 	bheap_init(&gsnfpca_cpu_heap);
 	/* initialize CPU state */
 	for (cpu = 0; cpu < num_online_cpus(); cpu++)  {
+        uint32_t ways_to_lock;
 		entry = &per_cpu(gsnfpca_cpu_entries, cpu);
 		gsnfpca_cpus[cpu] = entry;
 		entry->cpu 	 = cpu;
@@ -1779,14 +1466,24 @@ static int __init init_gsn_fpca(void)
 		cache_entry->used_cp = 0;
 		/* init cache controller, not use any cache 
  		 * no need to grab lock now since only init once */
-		if(__lock_cache_ways_to_cpu(cpu, 0x0))
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+        ways_to_lock = 0xfffff;
+#elif defined(CONFIG_ARM)
+        ways_to_lock = 0;
+#endif
+		if(__lock_cache_ways_to_cpu(cpu, ways_to_lock))
 		{
 			TRACE("P%d lock cache ways 0x0 fails\n", cpu);
 			printk("P%d lock cache ways 0x0 fails\n", cpu);
 		}
 	}
 	/* write back all cache */
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    dbprintk("wbinvd is called to flush whole cache\n");
+    __asm__ ("wbinvd");   
+#elif defined(CONFIG_ARM)
 	flush_cache_ways(0xffff);
+#endif
 	fp_domain_init(&gsnfpca, NULL, gsnfpca_release_jobs);
 	gsnfpca.used_cache_partitions = 0;
 	memset(gsnfpca.l2_cps, 0, sizeof(gsnfpca.l2_cps));
