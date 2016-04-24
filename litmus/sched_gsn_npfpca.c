@@ -832,8 +832,6 @@ static struct task_struct* gsnnpfpca_schedule(struct task_struct * prev)
 static void gsnnpfpca_finish_switch(struct task_struct *prev)
 {
 	cpu_entry_t* 	entry = &__get_cpu_var(gsnnpfpca_cpu_entries);
-	//int16_t cp_mask;
-	//int cpu;
 	int ret = 0;
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
@@ -847,7 +845,7 @@ static void gsnnpfpca_finish_switch(struct task_struct *prev)
 			if (ret)
 			{
 				TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
-					cpu, cp_mask);
+				     entry->cpu, tsk_rt(current)->job_params.cache_partitions);
 			}
             selective_flush_cache_partitions(entry->cpu,
                 tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
@@ -863,7 +861,7 @@ static void gsnnpfpca_finish_switch(struct task_struct *prev)
             if (ret)
             {
                 TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
-            		  cpu, cp_mask);
+            		  entry->cpu);
             }
         }
        

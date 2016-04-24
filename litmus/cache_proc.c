@@ -408,7 +408,6 @@ int detect_color_setting(struct task_struct *tsk, const char __user *const __use
     int ret = 0;
     unsigned long page_colors;
 
-    dbprintk("%s: called\n", __FUNCTION__);
     if (!tsk) {
         return 0;
     }
@@ -667,7 +666,7 @@ asmlinkage long sys_set_page_color(int cpu)
                 vma_itr->vm_start + PAGE_SIZE * i,
                 __page_to_pfn(old_page),
                 page_mapcount(old_page),
-                page_cound(old_page));
+                page_count(old_page));
 
             if (page_mapcount(old_page) != 0) {
                 ret = isolate_lru_page(old_page);
@@ -678,8 +677,9 @@ asmlinkage long sys_set_page_color(int cpu)
                 }
                 else {
                     TRACE_TASK(current, "isolate_lru_page failed.\n");
-                    TRACE_TASK(current, "page_lru = %d PageLRU = %d\n",
-                        page_lru(old_page), PageLRU(old_page));
+                    /** TODO: fix the compilation error */
+                    //TRACE_TASK(current, "page_lru = %d PageLRU = %d\n",
+                    //    page_lru(old_page), PageLRU(old_page));
                     nr_failed++;
                 }
             }

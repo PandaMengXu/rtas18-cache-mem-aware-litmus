@@ -86,9 +86,15 @@ typedef enum {
 /* MX: We onlly use way partition, so we have at most 16 way partitions on
  * Freescale IMX6
  */
+#if defined(CONFIG_ARM)
 #define MAX_CACHE_PARTITIONS	16
 #define MAX_NUM_CACHE_PARTITIONS	MAX_CACHE_PARTITIONS
 #define CACHE_PARTITIONS_MASK		(0xffff)
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+#define MAX_CACHE_PARTITIONS	20
+#define MAX_NUM_CACHE_PARTITIONS	MAX_CACHE_PARTITIONS
+#define CACHE_PARTITIONS_MASK		(0xfffff)
+#endif
 
 /* Provide generic comparison macros for userspace,
  * in case that we change this later. */

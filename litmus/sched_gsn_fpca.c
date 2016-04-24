@@ -898,6 +898,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	int out_of_time, sleep, preempt, np, exists, blocks, finish, prev_cache_state;
 	struct task_struct* next = NULL;
 	cache_state_t cache_state_prev;
+    unsigned long flags;
 
     if (prev)
         dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
@@ -914,7 +915,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	}
 #endif
 
-	raw_spin_lock(&gsnfpca_lock);
+	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
 
 	/* sanity checking */
 	BUG_ON(entry->scheduled && entry->scheduled != prev);
@@ -1085,7 +1086,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
   	 * NOTE: TODO: avoid such check in non-debug mode */
 	//gsnfpca_check_sched_invariant();
 
-	raw_spin_unlock(&gsnfpca_lock);
+	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
 
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(next, "gsnfpca_lock released\n");
@@ -1127,28 +1128,30 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
     {
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
         {
-	        raw_spin_lock(&gsnfpca_cache_lock);
+            unsigned long flags;
+	        raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
 			ret = __lock_cache_ways_to_cpu(entry->cpu, tsk_rt(current)->job_params.cache_partitions);
 			if (ret)
 			{
 				TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
-					cpu, cp_mask);
+					   entry->cpu, tsk_rt(current)->job_params.cache_partitions);
 			}
             selective_flush_cache_partitions(entry->cpu,
                 tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
-	        raw_spin_unlock(&gsnfpca_cache_lock);
+	        raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
         }
 		
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
         {
             int ret = 0;
-	        raw_spin_lock(&gsnfpca_cache_lock);
+            unsigned long flags;
+	        raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
             ret = __unlock_cache_ways_to_cpu(entry->cpu);
-	        raw_spin_unlock(&gsnfpca_cache_lock);
+	        raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
             if (ret)
             {
                 TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
-            		  cpu, cp_mask);
+            		  entry->cpu);
             }
         }
 	
@@ -1370,11 +1373,11 @@ static long gsnfpca_admit_task(struct task_struct* tsk)
     	TRACE_TASK(tsk, "is admitted, num_cp=%d, job.cp_mask=0x%x task_params.set_of_cp_init=0x%x\n",
 				   tsk_rt(tsk)->task_params.num_cache_partitions,
 				   tsk_rt(tsk)->job_params.cache_partitions,
-                   tsk_rt(next)->task_params.set_of_cp_init);
+                   tsk_rt(tsk)->task_params.set_of_cp_init);
 		return 0;
 	} else {
         TRACE_TASK(tsk, "is rejected. Reason: invalid rt task or set_of_cp_init(0x%x) !=0\n",
-                   tsk_rt(next)->task_params.set_of_cp_init);
+                   tsk_rt(tsk)->task_params.set_of_cp_init);
         return -EINVAL;
 	}
 }
