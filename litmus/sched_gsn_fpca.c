@@ -343,13 +343,17 @@ static inline int check_for_preemptions_helper(void)
 	uint16_t prev_cp_mask = 0;
 	cpu_entry_t* entry;
 
+    dbprintk("%s: called\n", __FUNCTION__);
 	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
 	/*TODO: Assume no priority inversion first! */
     dbprintk("%s:peek_ready task...\n", __FUNCTION__);
 	task = __peek_ready(&gsnfpca);
-    dbprintk("%s: peek_ready task %s(%d)\n", __FUNCTION__,
-              task->comm, task->pid);
+    if (task)
+        dbprintk("%s: peek_ready task %s(%d)\n", __FUNCTION__,
+                 task->comm, task->pid);
+    else
+        dbprintk("%s: peek_ready task null\n", __FUNCTION__);
 
 	if (!task) {
 		TRACE_TASK(task, "No ready RT tasks\n");
@@ -658,6 +662,7 @@ static void check_for_preemptions(void)
 	struct task_struct blocked_hi_tasks;
 	struct list_head *iter, *tmp;
 
+    dbprintk("%s: called\n", __FUNCTION__);
 	INIT_LIST_HEAD(&tsk_rt(&blocked_hi_tasks)->standby_list);
 
 	do {
@@ -706,6 +711,8 @@ static noinline void gsnfpca_job_arrival(struct task_struct* task)
 {
 	BUG_ON(!task);
 
+    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+             task->comm, task->pid);
 	TRACE_TASK(task, "gsnfpca_job_arrival %s/%d/%d\n",
 			   task->comm, task->pid,
 			   tsk_rt(task)->job_params.job_no);
@@ -717,6 +724,7 @@ static void gsnfpca_release_jobs(rt_domain_t* rt, struct bheap* tasks)
 {
 	unsigned long flags;
 
+    dbprintk("%s: called\n", __FUNCTION__);
 	TRACE("gsnfpca_release_jobs\n");
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
 
@@ -731,6 +739,9 @@ static noinline void job_completion(struct task_struct *t, int forced)
 {
 	rt_domain_t *rt = &gsnfpca;
 	BUG_ON(!t);
+
+    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+             t->comm, t->pid);
 
 	sched_trace_task_completion(t, forced);
 
@@ -888,8 +899,11 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	struct task_struct* next = NULL;
 	cache_state_t cache_state_prev;
 
-    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
-              prev->comm, prev->pid);
+    if (prev)
+        dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+                 prev->comm, prev->pid);
+    else
+        dbprintk("%s: task null called\n", __FUNCTION__);
 #ifdef CONFIG_RELEASE_MASTER
 	/* Bail out early if we are the release master.
 	 * The release master never schedules any real-time tasks.
@@ -1100,8 +1114,13 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 	cpu_entry_t* 	entry = &__get_cpu_var(gsnfpca_cpu_entries);
 	int ret = 0;
 
-    dbprintk("%s(%d) switch to %s(%d)\n", prev->comm, prev->pid,
-              current->comm, current->pid);
+    if (prev)
+        dbprintk("%s: task %s(%d) switch to task %s(%d)\n", __FUNCTION__,
+                 prev->comm, prev->pid,
+                 current->comm, current->pid);
+    else
+        dbprintk("%s: task null switch to some new task\n", __FUNCTION__);
+
 	entry->scheduled = is_realtime(current) ? current : NULL;
 	TRACE_TASK(current, "switched to\n");
     if (is_realtime(current))
@@ -1181,7 +1200,11 @@ static void gsnfpca_task_new(struct task_struct * t, int on_rq, int is_scheduled
 	unsigned long 		flags;
 	cpu_entry_t* 		entry;
 
-	dbprintk("%s: gsn fpca: task new %d\n", __FUNCTION__, t->pid);
+    if (t)
+	    dbprintk("%s: task %s(%d)\n", __FUNCTION__, t->comm, t->pid);
+    else
+        dbprintk("%s: task null called\n", __FUNCTION__);
+
 	TRACE("gsn fpca: task new %d\n", t->pid);
 
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
@@ -1226,8 +1249,12 @@ static void gsnfpca_task_wake_up(struct task_struct *task)
 	unsigned long flags;
 	lt_t now;
 
-    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
-             task->comm, task->pid);
+    if (task)
+        dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+                 task->comm, task->pid);
+    else
+        dbprintk("%s: task null called\n", __FUNCTION__);
+
 	TRACE_TASK(task, "wake_up at %llu, cp_mask=0x%x\n",
 			   litmus_clock(), tsk_rt(task)->job_params.cache_partitions);
 
@@ -1247,8 +1274,12 @@ static void gsnfpca_task_block(struct task_struct *t)
 	rt_domain_t *rt = &gsnfpca;
 	unsigned long flags;
 
-    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
-             t->comm, t->pid);
+    if (t)
+        dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+                 t->comm, t->pid);
+    else
+        dbprintk("%s: task null called\n", __FUNCTION__);
+
 	TRACE_TASK(t, "block at %llu, cp_mask=0x%x\n",
 			   litmus_clock(), tsk_rt(t)->job_params.cache_partitions);
 
@@ -1271,8 +1302,11 @@ static void gsnfpca_task_exit(struct task_struct * t)
 	rt_domain_t *rt = &gsnfpca;
 	unsigned long flags;
 
-    dbprintk("%s: task %s (%d) called\n", __FUNCTION__,
-              t->comm, t->pid);
+    if (t)
+        dbprintk("%s: task %s (%d) called\n", __FUNCTION__,
+                 t->comm, t->pid);
+    else
+        dbprintk("%s: task null called\n", __FUNCTION__);
 	/* unlink if necessary */
 	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
 	/* Unlock cache before unlink task since
@@ -1324,8 +1358,12 @@ long gsnfpca_complete_job(void)
  */
 static long gsnfpca_admit_task(struct task_struct* tsk)
 {
-    dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
-             tsk->comm, tsk->pid);
+    if (tsk)
+        dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+                 tsk->comm, tsk->pid);
+    else
+        dbprintk("%s: task null called\n", __FUNCTION__);
+
 	if (litmus_is_valid_fixed_prio(get_priority(tsk)) &&  tsk_rt(tsk)->task_params.set_of_cp_init == 0)
 	{
 		INIT_LIST_HEAD(&tsk_rt(tsk)->standby_list);

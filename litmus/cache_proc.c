@@ -97,6 +97,7 @@ static int __init set_active_mask_setup(char *str)
 {
     int ret;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     set_active_mask = 0xffffffff;
     if (sscanf(str, "0x%lx", &set_active_mask) != 1) {
         ret = bitmap_parselist(str, &set_active_mask, max_nr_sets);
@@ -198,6 +199,7 @@ static void add_page_to_color_list(struct page *page)
     const unsigned long color = page_color(page);
     struct color_group *cgroup = &color_groups[color];
 
+    dbprintk("%s: called\n", __FUNCTION__);
     BUG_ON(in_list(&page->lru) || PageLRU(page));
     BUG_ON(page_count(page) > 1);
     
@@ -220,6 +222,7 @@ static int do_add_pages(void)
     int counter[32] = {0,};
     int free_counter = 0;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     if (!spin_trylock(&add_pages_lock)) {
         printk("In adding pages already\n");
         goto out;
@@ -273,6 +276,7 @@ static struct page *new_alloc_page_color(unsigned long color)
     struct color_group *cgroup;
     struct page *rPage = NULL;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     if ((color < 0) || (color >= max_nr_sets)) {
         TRACE_CUR("Wrong color %lu\n", color);
         goto out;
@@ -308,6 +312,7 @@ out:
 
 struct page* get_colored_page(unsigned long color)
 {
+    dbprintk("%s: called\n", __FUNCTION__);
     return new_alloc_page_color(color);
 }
 
@@ -317,7 +322,7 @@ static int do_resize_pages(void)
     struct page *page, *page_tmp;
     LIST_HEAD(free_later);
     
-
+    dbprintk("%s: called\n", __FUNCTION__);
     for (color = 0; color < max_nr_sets; ++color) {
 
         if ((set_active_mask & (1 << color)) == 0) {
@@ -370,6 +375,7 @@ struct page* pick_one_colored_page(struct task_struct *target)
     colors = tsk_rt(target)->task_params.page_colors;
     index = tsk_rt(target)->task_params.color_index;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     if ((colors & set_active_mask) != colors) {
         printk("Using deactivated colors 0x%lx\n", colors);
         colors = colors & set_active_mask;
@@ -402,6 +408,7 @@ int detect_color_setting(struct task_struct *tsk, const char __user *const __use
     int ret = 0;
     unsigned long page_colors;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     if (!tsk) {
         return 0;
     }
@@ -477,6 +484,7 @@ struct page *new_alloc_page(struct page *page, unsigned long color, int **x)
 {
     struct page *rPage = NULL;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     rPage = new_alloc_page_color(color);
 
     return rPage;
@@ -487,6 +495,7 @@ static int show_page_pool_handler(struct ctl_table *table, int write, void __use
 {
     int ret = 0;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     mutex_lock(&void_lockdown_proc);
     ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
     if (ret)
@@ -506,6 +515,7 @@ static int refill_page_pool_handler(struct ctl_table *table, int write, void __u
 {
     int ret = 0;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     mutex_lock(&void_lockdown_proc);
     ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
     if (ret)
@@ -525,6 +535,7 @@ static int pages_per_color_handler(struct ctl_table *table, int write, void __us
 {
     int ret = 0;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     mutex_lock(&void_lockdown_proc);
     ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
     if (ret)
@@ -545,6 +556,7 @@ static int __init init_color_groups(void)
     unsigned long i;
     int err = 0;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     printk("max_nr_set = %d\n", max_nr_sets);
     color_groups = kmalloc(max_nr_sets * sizeof(struct color_group), GFP_KERNEL);
 
@@ -569,6 +581,7 @@ static int __init init_page_coloring(void)
     unsigned int i;
     int err = 0;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     max_nr_sets = counting_one_set(CACHE_MASK);
     max_nr_sets = two_exp(max_nr_sets);
 
@@ -621,6 +634,7 @@ asmlinkage long sys_set_page_color(int cpu)
     int nr_pages = 0, nr_shared_pages = 0, nr_failed = 0;
     unsigned long node;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     LIST_HEAD(pagelist);
     LIST_HEAD(shared_pagelist);
 
@@ -752,7 +766,7 @@ void flush_cache_ways(uint16_t ways)
 #if defined(CONFIG_ARM)
     l2x0_flush_cache_ways(ways);
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-    dbprintk("ERROR: x86 cannot flush a cache way\n");
+    dbprintk("%s: ERROR: x86 cannot flush a cache way\n", __FUNCTION__);
 #warning TODO: implement flush_cache_ways
 #endif
 }
@@ -769,6 +783,7 @@ int flushing_code_handler(struct ctl_table *table, int write,
 	int ret = 0, i;
 	unsigned long flags;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     raw_spin_lock(&flushing_code_lock);	
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
     raw_spin_unlock(&flushing_code_lock);
@@ -804,6 +819,7 @@ void flush_cache_for_task(struct task_struct *tsk)
     struct vm_area_struct *vma_itr = NULL;
     int nr_pages = 0;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     raw_spin_lock(&flushing_code_lock);
 
     down_read(&tsk->mm->mmap_sem);
@@ -858,7 +874,8 @@ void flush_cache_for_task(struct task_struct *tsk)
             put_page(cur_page);
         }
 #else   /* NB: This one may not be working */
-        dbprintk("flush [0x%016lx - 0x%016lx)\n", vma_itr->vm_start, vma_itr->vm_end);
+        dbprintk("%s: flush [0x%016lx - 0x%016lx)\n", __FUNCTION__,
+                 vma_itr->vm_start, vma_itr->vm_end);
         clflush_cache_range(vma_itr->vm_start, vma_itr->vm_end - vma_itr->vm_start);
 #endif
 next:
@@ -963,6 +980,7 @@ void litmus_setup_lockdown(void __iomem *base, u32 id)
 	lockreg_d = cache_base + L2X0_LOCKDOWN_WAY_D_BASE;
 	lockreg_i = cache_base + L2X0_LOCKDOWN_WAY_I_BASE;
     
+    dbprintk("%s: called\n", __FUNCTION__);
 	if (L2X0_CACHE_ID_PART_L310 == (cache_id & L2X0_CACHE_ID_PART_MASK)) {
 		nr_lockregs = 8;
         max_nr_ways = 16;
@@ -1014,6 +1032,7 @@ static void detect_intel_cat_1(void)
 {
     unsigned int eax, ebx, ecx, edx;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     // check L3 CAT Support
     cpuid_count(CPUID_LEAF_CAT, CPUID_COUNT_CAT_RESOURCE_TYPE,
         &eax, &ebx, &ecx, &edx);
@@ -1036,6 +1055,7 @@ static void detect_intel_cat_0(void)
     unsigned int line_size, line_partitions, way_count;
     unsigned int eax, ebx, ecx, edx;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     cpuid_count(CPUID_LEAF_CACHE_PARAMS, CPUID_COUNT_L3_PARAMS,
         &eax, &ebx, &ecx, &edx);
 
@@ -1053,6 +1073,7 @@ static void detect_intel_cat(void) {
     unsigned int eax, ebx, ecx, edx;
     struct cpuinfo_x86  *c;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     //check CAT configuration
     cpuid_count(CPUID_LEAF_EXT_FEATURES, 0x00,
         &eax, &ebx, &ecx, &edx);
@@ -1089,6 +1110,7 @@ static void init_intel_cat(void)
     int socket_i, core_i, cpu_i;
     u32 cos_i;
 
+    dbprintk("%s: called\n", __FUNCTION__);
     for(socket_i = 0; socket_i < nr_cpu_sockets; ++socket_i) {
         for(core_i = 0; core_i < nr_cores_per_socket; ++core_i) {
             cpu_i = socket_i * nr_cores_per_socket + core_i;
@@ -1110,6 +1132,7 @@ static void init_intel_cat(void)
 
 static void litmus_setup_msr(void)
 {
+    dbprintk("%s: called\n", __FUNCTION__);
     mutex_init(&lockdown_proc);
     raw_spin_lock_init(&flushing_code_lock);
 
@@ -1130,6 +1153,7 @@ static int way_mask_sanity_check(u32 ways_mask)
     int count, start, end;
 #endif
 
+    dbprintk("%s: called\n", __FUNCTION__);
     if (ways_mask > way_partition_max) {
         ret = -EINVAL;
         goto out;
@@ -1140,7 +1164,8 @@ static int way_mask_sanity_check(u32 ways_mask)
      */
     if ( hweight_long(ways_mask) < 2 )
     {
-        dbprintk("ways_mask (0x%x) must have at least 2 bits set\n", ways_mask);
+        dbprintk("%s: ways_mask (0x%x) must have at least 2 bits set\n",
+                 __FUNCTION__, ways_mask);
         ret = -EINVAL;
     }
     /** Check if cache partitions are continuous
@@ -1187,7 +1212,8 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
     int cos_i;
 #endif
 	
-    dbprintk("%s: CPs set to 0x%x on P%d\n", ways_mask, cpu);
+    dbprintk("%s: CPs set to 0x%x on P%d\n", __FUNCTION__,
+              ways_mask, cpu);
     if ((ret = way_mask_sanity_check(ways_mask)) != 0) {
         goto out;
     }
@@ -1199,7 +1225,8 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 
 	way_partitions[cpu] = ways_mask;
 
-    dbprintk("Cache partitions 0x%x are initialized as available\n", way_partitions[cpu]);
+    dbprintk("%s: Cache partitions 0x%x are initialized as available\n",
+             __FUNCTION__, way_partitions[cpu]);
 #if defined(CONFIG_ARM)
 	writel_relaxed(~way_partitions[cpu], ld_d_reg(cpu));
 	//writel_relaxed(~way_partitions[cpu*2], ld_i_reg(cpu));
@@ -1224,6 +1251,7 @@ int lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 {
 	int ret = 0;
 
+    dbprintk("%s: called\n", __FUNCTION__);
 	mutex_lock(&lockdown_proc);
 
 	ret = __lock_cache_ways_to_cpu(cpu, ways_mask);
@@ -1266,6 +1294,7 @@ int __get_used_cache_ways_on_cpu(int cpu, uint16_t *cp_mask)
     int cos_i;    
 #endif
 
+    dbprintk("%s: called\n", __FUNCTION__);
 	if (cpu < 0 || cpu >= num_online_cpus() || cpu >= MAX_CPUS) {
 		ret = -EINVAL;
 		goto out;
@@ -1311,6 +1340,7 @@ static int __get_cache_ways_to_cpu(int cpu)
     int cos_i;    
 #endif
 	
+    dbprintk("%s: called\n", __FUNCTION__);
 	if (cpu < 0 || cpu >= num_online_cpus() || cpu >= MAX_CPUS) {
 		ret = -EINVAL;
 		goto out;
@@ -1346,6 +1376,7 @@ int get_cache_ways_to_cpu(int cpu)
 {
 	int ret = 0;
 	
+    dbprintk("%s: called\n", __FUNCTION__);
 	mutex_lock(&lockdown_proc);
 
 	ret = __get_cache_ways_to_cpu(cpu);
@@ -1359,8 +1390,13 @@ static int __unlock_all_cache_ways(void)
 {
 	int ret = 0, i;
 
+    dbprintk("%s: called\n", __FUNCTION__);
 	for (i = 0; i < num_online_cpus(); ++i) {
-        __lock_cache_ways_to_cpu(i, unlock_all_value);
+#if defined(CONFIG_ARM)
+	    return __lock_cache_ways_to_cpu(i, 0x0);
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+	    return __lock_cache_ways_to_cpu(i, lock_all_value);
+#endif
 	}
 
 	return ret;
@@ -1370,6 +1406,7 @@ int unlock_all_cache_ways(void)
 {
 	int ret = 0;
 	
+    dbprintk("%s: called\n", __FUNCTION__);
 	mutex_lock(&lockdown_proc);
 
 	ret = __unlock_all_cache_ways();
@@ -1383,6 +1420,7 @@ static int __lock_all_cache_ways(void)
 {
 	int ret = 0, i;
 
+    dbprintk("%s: called\n", __FUNCTION__);
 	for (i = 0; i < num_online_cpus(); ++i) {
         __lock_cache_ways_to_cpu(i, lock_all_value);
 	}
@@ -1394,6 +1432,7 @@ int lock_all_cache_ways(void)
 {
 	int ret = 0;
 	
+    dbprintk("%s: called\n", __FUNCTION__);
 	mutex_lock(&lockdown_proc);
 
 	ret = __lock_all_cache_ways();
@@ -1410,6 +1449,7 @@ int way_partition_handler(struct ctl_table *table, int write, void __user *buffe
 	int ret = 0, i;
 	unsigned long flags;
 	
+    dbprintk("%s: called\n", __FUNCTION__);
 	mutex_lock(&lockdown_proc);
 	
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
@@ -1441,6 +1481,7 @@ int cache_status_handler(struct ctl_table *table, int write, void __user *buffer
 	int ret = 0;
 	rt_domain_t *rt = &gsnfpca;
 	
+    dbprintk("%s: called\n", __FUNCTION__);
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
@@ -1469,6 +1510,7 @@ int task_info_handler(struct ctl_table *table, int write, void __user *buffer,
 	int out_of_time, sleep, np, blocks, on_release;
 	rt_domain_t *rt = &gsnfpca;
 	
+    dbprintk("%s: called\n", __FUNCTION__);
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (ret)
 		goto out;
@@ -1522,6 +1564,7 @@ int lock_all_handler(struct ctl_table *table, int write, void __user *buffer,
 	int ret = 0, i;
 	unsigned long flags;
 	
+    dbprintk("%s: called\n", __FUNCTION__);
 	mutex_lock(&lockdown_proc);
 	
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
