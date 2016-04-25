@@ -343,17 +343,17 @@ static inline int check_for_preemptions_helper(void)
 	uint16_t prev_cp_mask = 0;
 	cpu_entry_t* entry;
 
-    dbprintk("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
+    dbprintk_v("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
 	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
 	/*TODO: Assume no priority inversion first! */
-    dbprintk("%s:peek_ready task...\n", __FUNCTION__);
+    dbprintk_v("%s:peek_ready task...\n", __FUNCTION__);
 	task = __peek_ready(&gsnfpca);
     if (task)
-        dbprintk("%s: peek_ready task %s(%d)\n", __FUNCTION__,
+        dbprintk_v("%s: peek_ready task %s(%d)\n", __FUNCTION__,
                  task->comm, task->pid);
     else
-        dbprintk("%s: peek_ready task null\n", __FUNCTION__);
+        dbprintk_v("%s: peek_ready task null\n", __FUNCTION__);
 
 	if (!task) {
 		TRACE_TASK(task, "No ready RT tasks\n");
@@ -649,7 +649,7 @@ static inline int check_for_preemptions_helper(void)
 			   rt->used_cache_partitions);
 	preempt(cpu_to_preempt);
  out:
-    dbprintk("%s: finishes on P%d\n", __FUNCTION__, smp_processor_id());
+    dbprintk_v("%s: finishes on P%d\n", __FUNCTION__, smp_processor_id());
 	return has_preemption;
 }
 
@@ -663,7 +663,14 @@ static void check_for_preemptions(void)
 	struct task_struct blocked_hi_tasks;
 	struct list_head *iter, *tmp;
 
-    dbprintk("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
+    /* must hold lock before this function is called */
+    if (!spin_is_locked(&gsnfpca_lock))
+    {
+        printk(KERN_ERR "%s: called without lock held\n", __FUNCTION__);
+        BUG();
+    }
+
+    dbprintk_v("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
 	INIT_LIST_HEAD(&tsk_rt(&blocked_hi_tasks)->standby_list);
 
 	do {
@@ -701,7 +708,7 @@ static void check_for_preemptions(void)
 	}
 
 out:
-    dbprintk("%s: finishes on P%d\n", __FUNCTION__, smp_processor_id());
+    dbprintk_v("%s: finishes on P%d\n", __FUNCTION__, smp_processor_id());
 	return;
 }
 
@@ -904,10 +911,10 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
     unsigned long flags;
 
     if (prev)
-        dbprintk("%s: task %s(%d) called\n", __FUNCTION__,
+        dbprintk_v("%s: task %s(%d) called\n", __FUNCTION__,
                  prev->comm, prev->pid);
     else
-        dbprintk("%s: task null called\n", __FUNCTION__);
+        dbprintk_v("%s: task null called\n", __FUNCTION__);
 #ifdef CONFIG_RELEASE_MASTER
 	/* Bail out early if we are the release master.
 	 * The release master never schedules any real-time tasks.
@@ -1119,11 +1126,11 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 	int ret = 0;
 
     if (prev)
-        dbprintk("%s: task %s(%d) switch to task %s(%d)\n", __FUNCTION__,
+        dbprintk_v("%s: task %s(%d) switch to task %s(%d)\n", __FUNCTION__,
                  prev->comm, prev->pid,
                  current->comm, current->pid);
     else
-        dbprintk("%s: task null switch to some new task\n", __FUNCTION__);
+        dbprintk_v("%s: task null switch to some new task\n", __FUNCTION__);
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
 	TRACE_TASK(current, "switched to\n");

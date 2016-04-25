@@ -374,7 +374,7 @@ endmenu
 
 menu "LITMUS Debug"
 
-config LITMUS_DEBUG
+config LITMUS_DEBUG_DEBUG
        bool "Print out LITMUS debug message"
        default y
        help
@@ -383,6 +383,16 @@ config LITMUS_DEBUG
            Disable this option when evaluating the performance, because printk will introduce noise in the evaluation
 
 	   If unsure, say Yes
+
+config LITMUS_DEBUG_VERBOSE
+       bool "Print out LITMUS debug message in verbose mode"
+       default n
+       help
+           With this option enabled, dbprintk_v() will be replaced with printk(KERN_DEBUG); With this option disabled, dbprintk_v() will be replaced with no-op.
+           Enable this option when debug the system and want to print out a LOT of message
+           Disable this option when evaluating the performance, because printk will introduce noise in the evaluation
+
+	   If unsure, say No
 
 endmenu
 

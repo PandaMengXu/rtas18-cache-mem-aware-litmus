@@ -181,7 +181,9 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 	{
 		printk(KERN_INFO "litmus: set_of_cp_init 0x%x is invalid\n",
 			tp.set_of_cp_init);
-		goto out_unlock;
+        /** gFPca requires the set_of_cp_init to be 0 to accept a RT task
+         *  So we just print out the warning but do not return error */
+		//goto out_unlock;
 	}
 
 	target->rt_param.task_params = tp;

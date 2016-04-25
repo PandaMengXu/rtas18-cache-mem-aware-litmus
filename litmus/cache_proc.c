@@ -40,11 +40,20 @@
 
 /** MX: The value should depend on platform
  *  TODO: make this value configurable */
-static u32 lock_all_value = 0xfffff;
+#if defined(CONFIG_ARM)
+static u32 lock_all_value = 0x0000ffff;
 static u32 unlock_all_value = 0x00000000;
 static u32 max_nr_ways = 16;
 static u32 nr_cpu_sockets = 1;
 static u32 nr_cores_per_socket = 4;
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+/* We assume the machine has CAT capability and 20 cache partitions */
+static u32 lock_all_value = 0xfffff;
+static u32 unlock_all_value = 0x00000;
+static u32 max_nr_ways = 20;
+static u32 nr_cpu_sockets = 1;
+static u32 nr_cores_per_socket = 4;
+#endif
 
 static u32 way_partitions[MAX_CPUS];
 
@@ -1156,6 +1165,7 @@ static int way_mask_sanity_check(u32 ways_mask)
     dbprintk("%s: called\n", __FUNCTION__);
     if (ways_mask > way_partition_max) {
         ret = -EINVAL;
+        printk(KERN_ERR "%s: caller tries to set cp: 0x%x\n", __FUNCTION__, ways_mask);
         goto out;
     }
 
@@ -1164,7 +1174,7 @@ static int way_mask_sanity_check(u32 ways_mask)
      */
     if ( hweight_long(ways_mask) < 2 )
     {
-        dbprintk("%s: ways_mask (0x%x) must have at least 2 bits set\n",
+        printk(KERN_ERR "%s: ways_mask (0x%x) must have at least 2 bits set\n",
                  __FUNCTION__, ways_mask);
         ret = -EINVAL;
     }
@@ -1215,10 +1225,13 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
     dbprintk("%s: CPs set to 0x%x on P%d\n", __FUNCTION__,
               ways_mask, cpu);
     if ((ret = way_mask_sanity_check(ways_mask)) != 0) {
+        printk(KERN_ERR "%s: does not pass way_mask_sanity_check: input (P%d 0x%x)\n",
+               __FUNCTION__, cpu, ways_mask);
         goto out;
     }
 
 	if (cpu < 0 || cpu >= num_online_cpus() || cpu >= MAX_CPUS) {
+        printk(KERN_ERR "%s: input P%d out of range\n", __FUNCTION__, cpu);
 		ret = -EINVAL;
 		goto out;
 	}
