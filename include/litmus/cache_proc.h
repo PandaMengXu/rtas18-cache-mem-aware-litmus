@@ -1,6 +1,7 @@
 #ifndef LITMUS_CACHE_PROC_H
 #define LITMUS_CACHE_PROC_H
 
+#include <asm/io.h>
 #ifdef __KERNEL__
 #include <linux/mm.h>
 

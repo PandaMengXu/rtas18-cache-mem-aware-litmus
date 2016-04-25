@@ -343,7 +343,7 @@ static inline int check_for_preemptions_helper(void)
 	uint16_t prev_cp_mask = 0;
 	cpu_entry_t* entry;
 
-    dbprintk("%s: called\n", __FUNCTION__);
+    dbprintk("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
 	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
 	/*TODO: Assume no priority inversion first! */
@@ -649,6 +649,7 @@ static inline int check_for_preemptions_helper(void)
 			   rt->used_cache_partitions);
 	preempt(cpu_to_preempt);
  out:
+    dbprintk("%s: finishes on P%d\n", __FUNCTION__, smp_processor_id());
 	return has_preemption;
 }
 
@@ -662,7 +663,7 @@ static void check_for_preemptions(void)
 	struct task_struct blocked_hi_tasks;
 	struct list_head *iter, *tmp;
 
-    dbprintk("%s: called\n", __FUNCTION__);
+    dbprintk("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
 	INIT_LIST_HEAD(&tsk_rt(&blocked_hi_tasks)->standby_list);
 
 	do {
@@ -690,7 +691,7 @@ static void check_for_preemptions(void)
 	} while (num_preemption <= NR_CPUS);
 
 	if (num_blocked_hi_tasks == 0)
-		return;
+        goto out;
 
 	list_for_each_safe(iter, tmp, &tsk_rt(&blocked_hi_tasks)->standby_list) {
 			struct rt_param *rt_cur = list_entry(iter, struct rt_param, standby_list);
@@ -699,6 +700,8 @@ static void check_for_preemptions(void)
 			__add_ready(&gsnfpca, tsk_cur);
 	}
 
+out:
+    dbprintk("%s: finishes on P%d\n", __FUNCTION__, smp_processor_id());
 	return;
 }
 
