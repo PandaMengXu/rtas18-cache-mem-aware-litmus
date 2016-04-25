@@ -21,8 +21,11 @@ struct release_queue {
 };
 
 typedef struct _rt_domain {
-	/* current used cache partitions */
-	uint16_t				used_cache_partitions;
+	/** current used cache partitions 
+     *  NB: used_cache_partitions only has 16 bits used for ARM
+     *      but has 20 bits used for X86 CAT enabled machine
+     *      Check this variable type when run on different types of platforms */
+	uint32_t				used_cache_partitions;
 	/* L2 cache partition status */
     raw_spinlock_t 			cache_lock;
 	pid_t				l2_cps[MAX_CACHE_PARTITIONS];
