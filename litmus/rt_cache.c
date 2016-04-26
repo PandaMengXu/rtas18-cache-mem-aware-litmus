@@ -308,14 +308,14 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 					   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
 		TRACE_TASK(task, "rt.used_cp=0x%x, job.cp=0x%x ~job.cp=0x%x\n",
 				   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions,
-				   ~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK));
+				   (~(tsk_rt(task)->job_params.cache_partitions) & CACHE_PARTITIONS_MASK));
 		/* PL310 unlock cache
  		 * A task may be preempted when the task have been linked to a CPU but
  		 * have not been scheduled on the CPU */
 		unlock_cache_partitions(tsk_rt(task)->linked_on,
 				tsk_rt(task)->job_params.cache_partitions, rt);
 		rt->used_cache_partitions &= 
-			~(tsk_rt(task)->job_params.cache_partitions & CACHE_PARTITIONS_MASK);
+			(~(tsk_rt(task)->job_params.cache_partitions) & CACHE_PARTITIONS_MASK);
 		/* Reset cp to 0 to indicate the cp are unlocked 
  		 * Have to reset, otherwise, we will clear unlocked cp when cache_state
  		 * changes from WILL_USE to WILL_CLEAR to CLEARED */

@@ -170,7 +170,7 @@ int count_set_bits(uint32_t bitmask)
 	int num_bits = 0;
 	for (i = 0; i < MAX_NUM_CACHE_PARTITIONS; i++)
 	{
-		if (bitmask & (1 << i))
+		if (bitmask & (1UL << i))
 			num_bits++;
 	}
 	return num_bits;

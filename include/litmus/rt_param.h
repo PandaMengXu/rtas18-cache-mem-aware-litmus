@@ -96,7 +96,7 @@ typedef enum {
 
 #define MAX_CACHE_PARTITIONS	20
 #define MAX_NUM_CACHE_PARTITIONS	MAX_CACHE_PARTITIONS
-#define CACHE_PARTITIONS_MASK		(0xfffff)
+#define CACHE_PARTITIONS_MASK		(0x000fffff)
 
 #endif
 

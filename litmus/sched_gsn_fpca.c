@@ -407,13 +407,13 @@ static int check_for_preemptions_helper(void)
 		{
 			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
 				break;
-			if ( (prev_cp_mask & (1<<i)) && 
-				(!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK)) )
+			if ( (prev_cp_mask & (1UL<<i)) && 
+				(!(rt->used_cache_partitions & (1UL<<i) & CACHE_PARTITIONS_MASK)) )
 			{
-				if (cp_mask_to_use & (1<<i) & CACHE_PARTITIONS_MASK)
+				if (cp_mask_to_use & (1UL<<i) & CACHE_PARTITIONS_MASK)
 					TRACE_TASK(task, "[BUG] cp_mask_to_use=0x%x double set i=%d\n",
 							   cp_mask_to_use, i);
-				cp_mask_to_use |= (1<<i) & CACHE_PARTITIONS_MASK;
+				cp_mask_to_use |= (1UL<<i) & CACHE_PARTITIONS_MASK;
 				num_cp_to_use += 1;
 			}
 		}
@@ -421,13 +421,13 @@ static int check_for_preemptions_helper(void)
 		{
 			if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
 				break;
-			if ( !(prev_cp_mask & (1<<i)) &&
-				!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK))
+			if ( !(prev_cp_mask & (1UL<<i)) &&
+				!(rt->used_cache_partitions & (1UL<<i) & CACHE_PARTITIONS_MASK))
 			{
-				if (cp_mask_to_use & (1<<i) & CACHE_PARTITIONS_MASK)
+				if (cp_mask_to_use & (1UL<<i) & CACHE_PARTITIONS_MASK)
 					TRACE_TASK(task, "[BUG] cp_mask_to_use=0x%x double set i=%d\n",
 							   cp_mask_to_use, i);
-				cp_mask_to_use |= (1<<i) & CACHE_PARTITIONS_MASK;
+				cp_mask_to_use |= (1UL<<i) & CACHE_PARTITIONS_MASK;
 				num_cp_to_use += 1;
 			}
 		}
@@ -458,12 +458,12 @@ static int check_for_preemptions_helper(void)
 				TRACE_TASK(task, "[BUG] Idle cache is enough but still try to preempt cache\n");
 				break;
 			}
-			if (!(rt->used_cache_partitions & (1<<i) & CACHE_PARTITIONS_MASK))
+			if (!(rt->used_cache_partitions & (1UL<<i) & CACHE_PARTITIONS_MASK))
 			{
-				if (cp_mask_to_use & (1<<i) & CACHE_PARTITIONS_MASK)
+				if (cp_mask_to_use & (1UL<<i) & CACHE_PARTITIONS_MASK)
 					TRACE_TASK(task, "cp_mask_to_use=0x%x double set i=%d\n",
 							   cp_mask_to_use, i);
-				cp_mask_to_use |= (1<<i) & CACHE_PARTITIONS_MASK;
+				cp_mask_to_use |= (1UL<<i) & CACHE_PARTITIONS_MASK;
 				num_cp_to_use++;
 			}
 		}
@@ -546,11 +546,11 @@ static int check_for_preemptions_helper(void)
 				num_cp_to_use -= tsk_rt(cur)->task_params.num_cache_partitions;
 				for(i=0; i<MAX_NUM_CACHE_PARTITIONS; i++)
 				{
-					if (tsk_rt(cur)->job_params.cache_partitions & (1<<i))
+					if (tsk_rt(cur)->job_params.cache_partitions & (1UL<<i))
 					{
 						if (num_cp_to_use >= tsk_rt(task)->task_params.num_cache_partitions)
 							break;
-						if (cp_mask_to_use & (1<<i))
+						if (cp_mask_to_use & (1UL<<i))
 						{
 							TRACE_TASK(task, "[BUG] preempt %s/%d/%d cache 0x%x (i=%d) but already has cache 0x%x\n",
 									   cur->comm, cur->pid, tsk_rt(cur)->job_params.job_no,
@@ -558,7 +558,7 @@ static int check_for_preemptions_helper(void)
 									   cp_mask_to_use);
 						}
 						num_cp_to_use++;
-						cp_mask_to_use |= (1<<i);
+						cp_mask_to_use |= (1UL<<i);
 					}
 				}
 			}
@@ -1157,38 +1157,46 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
     {
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
         {
-            unsigned long flags;
-	        raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
+            //unsigned long flags;
+	        //raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
+	        raw_spin_lock(&gsnfpca_cache_lock);
 			ret = __lock_cache_ways_to_cpu(entry->cpu, tsk_rt(current)->job_params.cache_partitions);
 			if (ret)
 			{
-				printk(KERN_ERR "[BUG][P%d] reserve CPs 0x%x for task %s(%d) num_cps:%d fails\n",
+				printk(KERN_ERR "[BUG][P%d] reserve CPs 0x%x for task %s(%d:%d) num_cps:%d fails\n",
 					   entry->cpu, tsk_rt(current)->job_params.cache_partitions,
-                       current->comm, current->pid, tsk_rt(current)->task_params.num_cache_partitions);
-				TRACE("[BUG][P%d] reserve CPs 0x%x for task %s(%d) num_cps:%d fails\n",
+                       current->comm, current->pid, tsk_rt(current)->job_params.job_no,
+                       tsk_rt(current)->task_params.num_cache_partitions);
+				TRACE("[BUG][P%d] reserve CPs 0x%x for task %s(%d:%d) num_cps:%d fails\n",
 					   entry->cpu, tsk_rt(current)->job_params.cache_partitions,
-                       current->comm, current->pid, tsk_rt(current)->task_params.num_cache_partitions);
+                       current->comm, current->pid, tsk_rt(current)->job_params.job_no,
+                       tsk_rt(current)->task_params.num_cache_partitions);
 			}
             selective_flush_cache_partitions(entry->cpu,
                 tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
-	        raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
+	        //raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
+	        raw_spin_unlock(&gsnfpca_cache_lock);
         }
 		
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
         {
             int ret = 0;
-            unsigned long flags;
-	        raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
+            //unsigned long flags;
+	        //raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
+	        raw_spin_lock(&gsnfpca_cache_lock);
             ret = __unlock_cache_ways_to_cpu(entry->cpu);
-	        raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
+	        raw_spin_unlock(&gsnfpca_cache_lock);
+	        //raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
             if (ret)
             {
-				printk(KERN_ERR "[BUG][P%d] release CPs 0x%x for task %s(%d) num_cps:%d fails\n",
+				printk(KERN_ERR "[BUG][P%d] release CPs 0x%x for task %s(%d:%d) num_cps:%d fails\n",
 					   entry->cpu, tsk_rt(current)->job_params.cache_partitions,
-                       current->comm, current->pid, tsk_rt(current)->task_params.num_cache_partitions);
-				TRACE("[BUG][P%d] release CPs 0x%x for task %s(%d) num_cps:%d fails\n",
+                       current->comm, current->pid, tsk_rt(current)->job_params.job_no,
+                       tsk_rt(current)->task_params.num_cache_partitions);
+				TRACE("[BUG][P%d] release CPs 0x%x for task %s(%d:%d) num_cps:%d fails\n",
 					   entry->cpu, tsk_rt(current)->job_params.cache_partitions,
-                       current->comm, current->pid, tsk_rt(current)->task_params.num_cache_partitions);
+                       current->comm, current->pid, tsk_rt(current)->job_params.job_no,
+                       tsk_rt(current)->task_params.num_cache_partitions);
             }
         }
 	
