@@ -117,6 +117,8 @@ typedef struct  {
 	struct task_struct*	preempting; /* only RT tasks, RT task that preempt a RT task on a core */
 	struct task_struct*	linked;		/* only RT tasks */
 	struct task_struct*	scheduled;	/* only RT tasks */
+    struct task_struct* preempted_tasks; /* tmp struct for check_for_preemption_helper */
+    struct task_struct* blocked_hi_tasks; /* tmp struct for check_for_preemption */
 	struct bheap_node*	hn;
 } cpu_entry_t;
 DEFINE_PER_CPU(cpu_entry_t, gsnfpca_cpu_entries);
@@ -307,7 +309,6 @@ static cpu_entry_t* gsnfpca_get_nearest_available_cpu(cpu_entry_t *start)
 static inline uint32_t get_prev_cps(rt_domain_t *rt, pid_t pid)
 {
 	uint32_t prev_cp_mask = 0;
-	int i;
 	struct task_struct *task;
 	
 	task = pid_task(find_vpid(pid), PIDTYPE_PID);
@@ -337,7 +338,7 @@ static int check_for_preemptions_helper(void)
 	uint32_t cp_mask_to_use = 0; /* mask of cache partitions the task to use */
 	uint32_t prev_cp_mask = 0;
 	int num_cp_to_use = 0;
-	struct task_struct preempted_tasks;
+	struct task_struct *preempted_tasks = NULL;
 	cpu_entry_t *cpu_to_preempt = NULL;
 	int i;
 	struct list_head *iter, *tmp;
@@ -345,7 +346,12 @@ static int check_for_preemptions_helper(void)
 	cpu_entry_t* entry;
 
     dbprintk_v("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
-	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
+    entry = &per_cpu(gsnfpca_cpu_entries, smp_processor_id());
+    /* NB: We assume the scheduler will not be called nested,
+     * so it is safe to reuse the task_struct */
+    preempted_tasks = entry->preempted_tasks;
+    memset(preempted_tasks, sizeof(*preempted_tasks), 0);
+	INIT_LIST_HEAD(&tsk_rt(preempted_tasks)->standby_list);
 
 	/*TODO: Assume no priority inversion first! */
     dbprintk_v("%s:peek_ready task...\n", __FUNCTION__);
@@ -508,7 +514,7 @@ static int check_for_preemptions_helper(void)
 			{
 				TRACE_TASK(cur, "[BUG] going to have corrupted standby_list\n");
 			}
-			list_add(&tsk_rt(cur)->standby_list, &tsk_rt(&preempted_tasks)->standby_list);
+			list_add(&tsk_rt(cur)->standby_list, &tsk_rt(preempted_tasks)->standby_list);
 			if(count_set_bits(tsk_rt(cur)->job_params.cache_partitions) 
 				   != tsk_rt(cur)->task_params.num_cache_partitions)
 			{
@@ -568,7 +574,7 @@ static int check_for_preemptions_helper(void)
 		else { /* clear preempted list if not preempt */
 			struct list_head *iter, *tmp;
 			cache_ok = 0;
-			list_for_each_safe(iter, tmp, &tsk_rt(&preempted_tasks)->standby_list) {
+			list_for_each_safe(iter, tmp, &tsk_rt(preempted_tasks)->standby_list) {
 				list_del_init(iter);
 			}
 		}
@@ -596,7 +602,7 @@ static int check_for_preemptions_helper(void)
 	BUG_ON(!task);
 	if (!only_take_idle_cache)
 	{
-		list_for_each_safe(iter, tmp, &tsk_rt(&preempted_tasks)->standby_list) {
+		list_for_each_safe(iter, tmp, &tsk_rt(preempted_tasks)->standby_list) {
 			struct rt_param *rt_cur = list_entry(iter, struct rt_param, standby_list);
 			struct task_struct *tsk_cur = list_entry(rt_cur, struct task_struct, rt_param); /* correct */
 			cpu_entry_t *cpu_entry = gsnfpca_cpus[rt_cur->linked_on];
@@ -651,6 +657,7 @@ static int check_for_preemptions_helper(void)
 	preempt(cpu_to_preempt);
  out:
     dbprintk_v("%s: finishes on P%d\n", __FUNCTION__, smp_processor_id());
+    memset(preempted_tasks, sizeof(*preempted_tasks), 0);
 	return has_preemption;
 }
 
@@ -661,8 +668,9 @@ static void check_for_preemptions(void)
 	int num_preemption = 0;
 	int num_blocked_hi_tasks = 0;
 	struct task_struct *cur;
-	struct task_struct blocked_hi_tasks;
+	struct task_struct *blocked_hi_tasks = NULL;
 	struct list_head *iter, *tmp;
+    cpu_entry_t *entry;
 
     /* must hold lock before this function is called */
     //if (!spin_is_locked(&gsnfpca_lock))
@@ -672,7 +680,12 @@ static void check_for_preemptions(void)
     //}
 
     dbprintk_v("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
-	INIT_LIST_HEAD(&tsk_rt(&blocked_hi_tasks)->standby_list);
+    entry = &per_cpu(gsnfpca_cpu_entries, smp_processor_id());
+    /* NB: We assume the scheduler will not be called nested,
+     * so it is safe to reuse the task_struct */
+    blocked_hi_tasks = entry->blocked_hi_tasks;
+    memset(blocked_hi_tasks, sizeof(*blocked_hi_tasks), 0);
+	INIT_LIST_HEAD(&tsk_rt(blocked_hi_tasks)->standby_list);
 
 	do {
 		has_preemption = check_for_preemptions_helper();
@@ -692,7 +705,7 @@ static void check_for_preemptions(void)
 			{
 				TRACE_TASK(cur, "[BUG] going to have corrupted standby_list\n");
 			}
-			list_add(&tsk_rt(cur)->standby_list, &tsk_rt(&blocked_hi_tasks)->standby_list);
+			list_add(&tsk_rt(cur)->standby_list, &tsk_rt(blocked_hi_tasks)->standby_list);
 			num_blocked_hi_tasks++;
 			TRACE_TASK(cur, "%dth high priority task cannot preempt, try lower priority ready task.\n", num_blocked_hi_tasks);
 		}
@@ -701,7 +714,7 @@ static void check_for_preemptions(void)
 	if (num_blocked_hi_tasks == 0)
         goto out;
 
-	list_for_each_safe(iter, tmp, &tsk_rt(&blocked_hi_tasks)->standby_list) {
+	list_for_each_safe(iter, tmp, &tsk_rt(blocked_hi_tasks)->standby_list) {
 			struct rt_param *rt_cur = list_entry(iter, struct rt_param, standby_list);
 			struct task_struct *tsk_cur = list_entry(rt_cur, struct task_struct, rt_param); /* correct */
 			list_del_init(&rt_cur->standby_list);
@@ -710,6 +723,7 @@ static void check_for_preemptions(void)
 
 out:
     dbprintk_v("%s: finishes on P%d\n", __FUNCTION__, smp_processor_id());
+    memset(blocked_hi_tasks, sizeof(*blocked_hi_tasks), 0);
 	return;
 }
 
@@ -774,7 +788,8 @@ static noinline void job_completion(struct task_struct *t, int forced)
 		gsnfpca_job_arrival(t);
 }
 
-void gsnfpca_dump_cpus()
+#if defined(CONFIG_LITMUS_DEBUG_CHECK_INVARIANT)
+static void gsnfpca_dump_cpus(void)
 {
 	int i;
 	cpu_entry_t *entry = NULL;
@@ -811,7 +826,7 @@ void gsnfpca_dump_cpus()
  * the current linked task on the CPU should NOT be preemptable
  * by the top task in ready_queue
  */
-void gsnfpca_check_sched_invariant()
+static void gsnfpca_check_sched_invariant(void)
 {
 	int i;
 	cpu_entry_t *entry = NULL;
@@ -880,6 +895,7 @@ void gsnfpca_check_sched_invariant()
 
 	return;
 }
+#endif
 
 /* Getting schedule() right is a bit tricky. schedule() may not make any
  * assumptions on the state of the current task since it may be called for a
@@ -909,7 +925,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	int out_of_time, sleep, preempt, np, exists, blocks, finish, prev_cache_state;
 	struct task_struct* next = NULL;
 	cache_state_t cache_state_prev;
-    unsigned long flags;
+    //unsigned long flags;
 
     if (prev)
         dbprintk_v("%s: task %s(%d) called\n", __FUNCTION__,
@@ -1451,6 +1467,24 @@ static long gsnfpca_activate_plugin(void)
 		bheap_node_init(&entry->hn, entry);
 		entry->linked    = NULL;
 		entry->scheduled = NULL;
+        printk(KERN_ERR "alloc entry->preempted_tasks on P%d start\n", cpu);
+        entry->preempted_tasks = (struct task_struct *) kmalloc(sizeof(*(entry->preempted_tasks)), GFP_KERNEL);
+        if ( !entry->preempted_tasks )
+        {
+            printk(KERN_ERR "%s: alloc preempted_tasks fails\n", __FUNCTION__);
+            BUG();
+        }
+        printk(KERN_ERR "alloc entry->preempted_tasks on P%d finish\n", cpu);
+        memset(entry->preempted_tasks, sizeof(*(entry->preempted_tasks)), 0);
+        printk(KERN_ERR "alloc entry->blocked_hi_tasks on P%d start\n", cpu);
+        entry->blocked_hi_tasks = (struct task_struct *) kmalloc(sizeof(*(entry->blocked_hi_tasks)), GFP_KERNEL);
+        if ( !entry->blocked_hi_tasks )
+        {
+            printk(KERN_ERR "%s: alloc blocked_hi_tasks fails\n", __FUNCTION__);
+            BUG();
+        }
+        printk(KERN_ERR "alloc entry->blocked_hi_tasks on P%d finish\n", cpu);
+        memset(entry->blocked_hi_tasks, sizeof(*(entry->blocked_hi_tasks)), 0);
 #ifdef CONFIG_RELEASE_MASTER
 		if (cpu != gsnfpca.release_master) {
 #endif
@@ -1473,7 +1507,15 @@ static long gsnfpca_activate_plugin(void)
 
 static long gsnfpca_deactivate_plugin(void)
 {
+    int cpu;
+    cpu_entry_t *entry;
+
     dbprintk("%s: called\n", __FUNCTION__);
+	for_each_online_cpu(cpu) {
+		entry = &per_cpu(gsnfpca_cpu_entries, cpu);
+        kfree(entry->blocked_hi_tasks);
+        kfree(entry->preempted_tasks);
+    }
 	destroy_domain_proc_info(&gsnfpca_domain_proc_info);
 	return 0;
 }

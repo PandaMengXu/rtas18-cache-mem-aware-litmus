@@ -179,10 +179,14 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 	if (hweight_long(tp.set_of_cp_init) < MSR_IA32_CBM_MIN_NUM_BITS_RTXEN ||
 	    hweight_long(tp.set_of_cp_init) > MSR_IA32_CBM_LENGTH_RTXEN)
 	{
-		printk(KERN_INFO "litmus: set_of_cp_init 0x%x is invalid\n",
-			tp.set_of_cp_init);
         /** gFPca requires the set_of_cp_init to be 0 to accept a RT task
-         *  So we just print out the warning but do not return error */
+         *  So we do NOT print out the warning
+         *  We should not return error because for cache-agnostic RT task,
+         *  they may not want to invoke the cache management */
+        if ( !strcmp(litmus->plugin_name, "GSN-FPCA2") ||
+             !strcmp(litmus->plugin_name, "GSN-NPFPCA") )
+		    printk(KERN_INFO "litmus: set_of_cp_init 0x%x is invalid (OK for cache-aware scheduler)\n",
+			       tp.set_of_cp_init);
 		//goto out_unlock;
 	}
 

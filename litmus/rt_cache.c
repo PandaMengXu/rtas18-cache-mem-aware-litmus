@@ -60,13 +60,13 @@ check_cache_status_invariant(int cpu, uint32_t cp_mask)
 		cache_entry_tmp = &per_cpu(cpu_cache_entries, i);
 		if (i != cpu && (cache_entry_tmp->used_cp & cp_mask))
 		{
-			TRACE("[BUG]Lock [P%d], Detect overlap CP: [P%d] used_cp:0x%x, [P%d] used_cp:0x%x",
-				   cpu, i, cache_entry_tmp->used_cp, cpu, cache_entry->used_cp);
+			TRACE("[BUG]Lock [P%d], Detect overlap CP: [P%d] used_cp:0x%x, [P%d] used_cp:0x%x (0x%x)\n",
+				   cpu, i, cache_entry_tmp->used_cp, cpu, cache_entry->used_cp, cp_mask);
 		}
-		//if (__get_used_cache_ways_on_cpu(i, &used_cp))
-		//{
-		//	TRACE("[ERROR] get_used_cache_ways_on_cpu %d fails\n", i);
-		//}
+		if (__get_used_cache_ways_on_cpu(i, &used_cp))
+		{
+			TRACE("[ERROR] get_used_cache_ways_on_cpu %d fails\n", i);
+		}
 		if (used_cp != cache_entry_tmp->used_cp)
 		{
 			TRACE("[BUG] [P%d] cache_entry->used_cp(0x%x) != get_used_cache_ways_on_cpu->used_cp(0x%x)\n",
