@@ -1162,8 +1162,12 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 			ret = __lock_cache_ways_to_cpu(entry->cpu, tsk_rt(current)->job_params.cache_partitions);
 			if (ret)
 			{
-				TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
-					   entry->cpu, tsk_rt(current)->job_params.cache_partitions);
+				printk(KERN_ERR "[BUG][P%d] reserve CPs 0x%x for task %s(%d) num_cps:%d fails\n",
+					   entry->cpu, tsk_rt(current)->job_params.cache_partitions,
+                       current->comm, current->pid, tsk_rt(current)->task_params.num_cache_partitions);
+				TRACE("[BUG][P%d] reserve CPs 0x%x for task %s(%d) num_cps:%d fails\n",
+					   entry->cpu, tsk_rt(current)->job_params.cache_partitions,
+                       current->comm, current->pid, tsk_rt(current)->task_params.num_cache_partitions);
 			}
             selective_flush_cache_partitions(entry->cpu,
                 tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
@@ -1179,8 +1183,12 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 	        raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
             if (ret)
             {
-                TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
-            		  entry->cpu);
+				printk(KERN_ERR "[BUG][P%d] release CPs 0x%x for task %s(%d) num_cps:%d fails\n",
+					   entry->cpu, tsk_rt(current)->job_params.cache_partitions,
+                       current->comm, current->pid, tsk_rt(current)->task_params.num_cache_partitions);
+				TRACE("[BUG][P%d] release CPs 0x%x for task %s(%d) num_cps:%d fails\n",
+					   entry->cpu, tsk_rt(current)->job_params.cache_partitions,
+                       current->comm, current->pid, tsk_rt(current)->task_params.num_cache_partitions);
             }
         }
 	

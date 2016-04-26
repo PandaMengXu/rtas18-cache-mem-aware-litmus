@@ -183,8 +183,8 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
          *  So we do NOT print out the warning
          *  We should not return error because for cache-agnostic RT task,
          *  they may not want to invoke the cache management */
-        if ( !strcmp(litmus->plugin_name, "GSN-FPCA2") ||
-             !strcmp(litmus->plugin_name, "GSN-NPFPCA") )
+        if ( strcmp(litmus->plugin_name, "GSN-FPCA2") &&
+             strcmp(litmus->plugin_name, "GSN-NPFPCA") )
 		    printk(KERN_INFO "litmus: set_of_cp_init 0x%x is invalid (OK for cache-aware scheduler)\n",
 			       tp.set_of_cp_init);
 		//goto out_unlock;

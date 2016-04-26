@@ -55,7 +55,7 @@ check_cache_status_invariant(int cpu, uint32_t cp_mask)
 	uint32_t used_cp;
 	
 	cache_entry = &per_cpu(cpu_cache_entries, cpu);
-	for (i = 0; i < NR_CPUS; i++)
+	for (i = 0; i < num_online_cpus(); i++)
 	{
 		cache_entry_tmp = &per_cpu(cpu_cache_entries, i);
 		if (i != cpu && (cache_entry_tmp->used_cp & cp_mask))
@@ -63,6 +63,8 @@ check_cache_status_invariant(int cpu, uint32_t cp_mask)
 			TRACE("[BUG]Lock [P%d], Detect overlap CP: [P%d] used_cp:0x%x, [P%d] used_cp:0x%x (0x%x)\n",
 				   cpu, i, cache_entry_tmp->used_cp, cpu, cache_entry->used_cp, cp_mask);
 		}
+        /* NB: TODO: Lets delay this sanity check to a later point. */
+        /*
 		if (__get_used_cache_ways_on_cpu(i, &used_cp))
 		{
 			TRACE("[ERROR] get_used_cache_ways_on_cpu %d fails\n", i);
@@ -72,6 +74,7 @@ check_cache_status_invariant(int cpu, uint32_t cp_mask)
 			TRACE("[BUG] [P%d] cache_entry->used_cp(0x%x) != get_used_cache_ways_on_cpu->used_cp(0x%x)\n",
 				   i, cache_entry_tmp->used_cp, used_cp);
 		}
+        */
 
 	}
 }
@@ -128,7 +131,7 @@ void
 lock_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_domain_t *rt)
 {
 	cpu_cache_entry_t *cache_entry;
-	uint32_t used_cp;
+	//uint32_t used_cp;
     //int ret = 0;
 
 	if (cpu == NO_CPU)
@@ -158,11 +161,12 @@ lock_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_dom
 	//{
 	//	TRACE("[ERROR] get_used_cache_ways_on_cpu(%d) fails\n", cpu);
 	//}
-	if (used_cp != cp_mask)
-	{
-		TRACE("[BUG][P%d] lock cache 0x%x but not in effect now, current cp=0x%x\n",
-			  cpu, cp_mask, used_cp);
-	}
+	//if (used_cp != cp_mask)
+	//{
+	//	TRACE("[BUG][P%d] lock cache 0x%x but not in effect now, current cp=0x%x\n",
+	//		  cpu, cp_mask, used_cp);
+	//}
+
 //	if (cp_mask != 0)
 //	{
 //		uint32_t cp_mask_to_flush = 0;
@@ -195,8 +199,8 @@ void
 unlock_cache_partitions(int cpu, uint32_t cp_mask, rt_domain_t *rt)
 {
 	cpu_cache_entry_t *cache_entry;
-	uint32_t used_cp;
-    int ret;
+	//uint32_t used_cp;
+    int ret = 0;
 
 	if (cpu == NO_CPU)
 	{
@@ -225,10 +229,12 @@ unlock_cache_partitions(int cpu, uint32_t cp_mask, rt_domain_t *rt)
 	//{
 	//	TRACE("[ERROR] get_used_cache_ways_on_cpu(%d)\n", cpu);
 	//}
-	if (used_cp)
-	{
-		TRACE("[BUG] Unlock cache partitions fails on P%d\n", cpu);
-	}
+	//if (used_cp)
+	//{
+	//	TRACE("[BUG] Unlock cache partitions fails on P%d\n", cpu);
+	//}
+
+
 	//if (cp_mask != 0)
 	//	flush_cache_ways(cp_mask);
 	//else

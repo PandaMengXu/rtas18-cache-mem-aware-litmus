@@ -1235,6 +1235,7 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
     if ((ret = way_mask_sanity_check(ways_mask)) != 0) {
         printk(KERN_ERR "%s: does not pass way_mask_sanity_check: input (P%d 0x%x)\n",
                __FUNCTION__, cpu, ways_mask);
+        ret = -EINVAL;
         goto out;
     }
 
