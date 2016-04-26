@@ -304,9 +304,9 @@ static cpu_entry_t* gsnfpca_get_nearest_available_cpu(cpu_entry_t *start)
 #endif
 
 /* global cache lock is grabbed by caller */
-static inline uint16_t get_prev_cps(rt_domain_t *rt, pid_t pid)
+static inline uint32_t get_prev_cps(rt_domain_t *rt, pid_t pid)
 {
-	uint16_t prev_cp_mask = 0;
+	uint32_t prev_cp_mask = 0;
 	int i;
 	struct task_struct *task;
 	
@@ -325,7 +325,7 @@ static inline uint16_t get_prev_cps(rt_domain_t *rt, pid_t pid)
 
 /* Check if top task in ready_queue can preempt a CPU
  * Remove the top task from ready_queue if preemption occurs  */
-static inline int check_for_preemptions_helper(void)
+static int check_for_preemptions_helper(void)
 {
 	rt_domain_t *rt = &gsnfpca;
 	struct task_struct *task;
@@ -333,14 +333,15 @@ static inline int check_for_preemptions_helper(void)
 	int cpu_ok = 0;
 	int cache_ok = 0;
 	int only_take_idle_cache = 0;
-	uint16_t cp_mask_to_use = 0; /* mask of cache partitions the task to use */
+    /* NB: The type width must be no smaller than the number of CPs on the platform */
+	uint32_t cp_mask_to_use = 0; /* mask of cache partitions the task to use */
+	uint32_t prev_cp_mask = 0;
 	int num_cp_to_use = 0;
 	struct task_struct preempted_tasks;
 	cpu_entry_t *cpu_to_preempt = NULL;
 	int i;
 	struct list_head *iter, *tmp;
 	int has_preemption = SCHED_NO_PREEMPTION;
-	uint16_t prev_cp_mask = 0;
 	cpu_entry_t* entry;
 
     dbprintk_v("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
@@ -664,11 +665,11 @@ static void check_for_preemptions(void)
 	struct list_head *iter, *tmp;
 
     /* must hold lock before this function is called */
-    if (!spin_is_locked(&gsnfpca_lock))
-    {
-        printk(KERN_ERR "%s: called without lock held\n", __FUNCTION__);
-        BUG();
-    }
+    //if (!spin_is_locked(&gsnfpca_lock))
+    //{
+    //    printk(KERN_ERR "%s: called without lock held\n", __FUNCTION__);
+    //    BUG();
+    //}
 
     dbprintk_v("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
 	INIT_LIST_HEAD(&tsk_rt(&blocked_hi_tasks)->standby_list);
@@ -925,7 +926,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	}
 #endif
 
-	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
+	//raw_spin_lock_irqsave(&gsnfpca_lock, flags);
+	raw_spin_lock(&gsnfpca_lock);
 
 	/* sanity checking */
 	BUG_ON(entry->scheduled && entry->scheduled != prev);
@@ -1096,7 +1098,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
   	 * NOTE: TODO: avoid such check in non-debug mode */
 	//gsnfpca_check_sched_invariant();
 
-	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
+	//raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
+	raw_spin_unlock(&gsnfpca_lock);
 
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(next, "gsnfpca_lock released\n");

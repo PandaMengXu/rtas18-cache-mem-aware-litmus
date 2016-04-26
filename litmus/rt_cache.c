@@ -48,11 +48,11 @@ set_cache_state(struct task_struct *task, cache_state_t s)
  * cp_mask: the cp_mask the cpu has
  **/
 static inline void
-check_cache_status_invariant(int cpu, uint16_t cp_mask)
+check_cache_status_invariant(int cpu, uint32_t cp_mask)
 {
 	int i;
 	cpu_cache_entry_t *cache_entry_tmp, *cache_entry;
-	uint16_t used_cp;
+	uint32_t used_cp;
 	
 	cache_entry = &per_cpu(cpu_cache_entries, cpu);
 	for (i = 0; i < NR_CPUS; i++)
@@ -83,12 +83,12 @@ check_cache_status_invariant(int cpu, uint16_t cp_mask)
  * we don't need to grab lock for this since different 
  * tasks on different cores use different elements in rt->l2_cps */
 void
-selective_flush_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_domain_t *rt)
+selective_flush_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_domain_t *rt)
 {
 	if (cp_mask != 0)
 	{
 		/* TODO: calculate cache ways to flush */
-		uint16_t cp_mask_to_flush = 0;
+		uint32_t cp_mask_to_flush = 0;
 		int i;
 		for (i = 0; i < MAX_CACHE_PARTITIONS; i++)
 		{
@@ -125,10 +125,10 @@ selective_flush_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *
  * tsk: lock cache partition for task tsk
  */
 void
-lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_domain_t *rt)
+lock_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_domain_t *rt)
 {
 	cpu_cache_entry_t *cache_entry;
-	uint16_t used_cp;
+	uint32_t used_cp;
     //int ret = 0;
 
 	if (cpu == NO_CPU)
@@ -165,7 +165,7 @@ lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_dom
 	}
 //	if (cp_mask != 0)
 //	{
-//		uint16_t cp_mask_to_flush = 0;
+//		uint32_t cp_mask_to_flush = 0;
 //		int i;
 //		for (i = 0; i < MAX_CACHE_PARTITIONS; i++)
 //		{
@@ -192,10 +192,10 @@ lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_dom
  * unlock cp_mask for cpu so that other cpus can use cp_mask
  */
 void
-unlock_cache_partitions(int cpu, uint16_t cp_mask, rt_domain_t *rt)
+unlock_cache_partitions(int cpu, uint32_t cp_mask, rt_domain_t *rt)
 {
 	cpu_cache_entry_t *cache_entry;
-	uint16_t used_cp;
+	uint32_t used_cp;
     int ret;
 
 	if (cpu == NO_CPU)

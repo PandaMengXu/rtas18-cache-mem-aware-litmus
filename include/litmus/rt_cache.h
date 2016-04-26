@@ -24,13 +24,16 @@ typedef struct {
     __u64        val;
 } msr_data_t;
 
+/* NB: PER_CPU data structure. Type size matters for different types of hardware! 
+ * May corrupt other subsystem PER_CPU data structure if we assign a larger type data
+ * to this PER_CPU structure */
 typedef struct  {
 	int 			cpu;
-	uint16_t 		used_cp; 		/* currently used cache partition */
+	uint32_t 		used_cp; 		/* currently used cache partition */
 } cpu_cache_entry_t;
 
 void
-selective_flush_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_domain_t *rt);
+selective_flush_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_domain_t *rt);
 /* task t cache_state should be s
  */
 //static inline void
@@ -51,13 +54,13 @@ selective_flush_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *
  *    As long as users do not write to /proc/sys, we are safe
  */
 void
-lock_cache_partitions(int cpu, uint16_t cp_mask, struct task_struct *tsk, rt_domain_t *rt);
+lock_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_domain_t *rt);
 
 /* unlock_cache_partitions
  * unlock cp_mask for cpu so that other cpus can use cp_mask
  */
 void
-unlock_cache_partitions(int cpu, uint16_t cp_mask, rt_domain_t *rt);
+unlock_cache_partitions(int cpu, uint32_t cp_mask, rt_domain_t *rt);
 
 /* set_cache_config
  * Check task.cache_state is correct before change it

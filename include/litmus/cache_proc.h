@@ -20,15 +20,16 @@ int unlock_all_cache_ways(void);
 int lock_all_cache_ways(void);
 int unlock_cache_ways_to_cpu(int cpu);
 int __unlock_cache_ways_to_cpu(int cpu);
-int __get_used_cache_ways_on_cpu(int cpu, uint16_t *cp_mask);
+int __get_used_cache_ways_on_cpu(int cpu, uint32_t *cp_mask);
 
-void flush_cache_ways(uint16_t ways);
 
 #if defined(CONFIG_ARM)
+void flush_cache_ways(uint16_t ways);
 void l2x0_flush_cache_ways(uint16_t ways);
 #endif
 
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+void flush_cache_ways(uint32_t ways);
 void flush_cache_for_task(struct task_struct *tsk);
 #endif
 

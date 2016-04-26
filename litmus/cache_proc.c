@@ -762,23 +762,31 @@ static raw_spinlock_t prefetch_lock;
 int pid;
 int rt_pid_min;
 int rt_pid_max;
+#if defined(CONFIG_ARM)
 uint16_t new_cp_status;
 uint16_t rt_cp_min;
 uint16_t rt_cp_max;
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+uint32_t new_cp_status;
+uint32_t rt_cp_min;
+uint32_t rt_cp_max;
+#endif
 
 #if defined(CONFIG_ARM)
 extern void l2x0_flush_all(void);
 #endif
 
+#if defined(CONFIG_ARM)
 void flush_cache_ways(uint16_t ways)
 {
-#if defined(CONFIG_ARM)
     l2x0_flush_cache_ways(ways);
-#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-    dbprintk("%s: ERROR: x86 cannot flush a cache way\n", __FUNCTION__);
-#warning TODO: implement flush_cache_ways
-#endif
 }
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+void flush_cache_ways(uint32_t ways)
+{
+    printk("%s: ERROR: x86 cannot flush a cache way\n", __FUNCTION__);
+}
+#endif
 
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
 
@@ -1297,7 +1305,7 @@ int unlock_cache_ways_to_cpu(int cpu)
 	return ret;
 }
 
-int __get_used_cache_ways_on_cpu(int cpu, uint16_t *cp_mask)
+int __get_used_cache_ways_on_cpu(int cpu, uint32_t *cp_mask)
 {
 	int ret = 0;
 	unsigned long flags;
@@ -1887,8 +1895,14 @@ static int __init litmus_sysctl_init(void)
 	way_partition_max = 0x0000FFFF;
 	rt_pid_min = 1;
 	rt_pid_max = 10000;
+
+#if defined(CONFIG_ARM)
 	rt_cp_min = 0x0;
 	rt_cp_max = 0xFFFF;
+#elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
+	rt_cp_min = 0x0;
+	rt_cp_max = 0xFFFFF;
+#endif
 
     // set
     set_partition_min = 0x00000001;

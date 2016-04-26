@@ -196,9 +196,10 @@ struct rt_job {
 
 	/* Which cache partitions this job is using
 	 * PL310 only has 16 way partitions.
+	 * MX: We change the type to 32bit to be compatible with X86 arch
 	 */
-	uint16_t	cache_partitions;
-	uint16_t	cp_prev;
+	uint32_t	cache_partitions;
+	uint32_t	cp_prev;
 	cache_state_t	cache_state;
 
 	/* Which job is this. This is used to let user space
