@@ -193,7 +193,7 @@ static noinline void link_task_to_cpu(struct task_struct* linked,
 	cpu_entry_t *sched;
 	struct task_struct* tmp;
 	int on_cpu;
-    //rt_domain_t *rt = &gsnfpca;
+    rt_domain_t *rt = &gsnfpca;
 
 	BUG_ON(linked && !is_realtime(linked));
 
@@ -201,7 +201,7 @@ static noinline void link_task_to_cpu(struct task_struct* linked,
 	if (entry->linked) {
 		entry->linked->rt_param.linked_on = NO_CPU;
         /* Release CP for the core */
-        //unlock_cache_partitions(entry->cpu, entry->linked->rt_param.job_params.cache_partitions, rt);
+        unlock_cache_partitions(entry->cpu, entry->linked->rt_param.job_params.cache_partitions, rt);
 	}
 
 	/* Link new task to CPU. */
@@ -223,13 +223,12 @@ static noinline void link_task_to_cpu(struct task_struct* linked,
 					   "already scheduled on %d, updating link and CP on affected cores.\n",
 					   sched->cpu);
                 /* Update CP for the sched->cpu by first unlock and then lock */
-                //unlock_cache_partitions(sched->cpu, sched->linked->rt_param.job_params.cache_partitions, rt);
+                if ( sched->linked )
+                    unlock_cache_partitions(sched->cpu, sched->linked->rt_param.job_params.cache_partitions, rt);
 				tmp = sched->linked;
 				linked->rt_param.linked_on = sched->cpu;
 				sched->linked = linked;
 				update_cpu_position(sched);
-                //lock_cache_partitions(sched->cpu, sched->linked->rt_param.job_params.cache_partitions,
-                //                     sched->linked, rt);
 				linked = tmp;
 			}
 		}
@@ -238,8 +237,8 @@ static noinline void link_task_to_cpu(struct task_struct* linked,
 			linked->rt_param.linked_on = entry->cpu;
             /* Update CP for entry->cpu by lock CP 
              * entry->cpu has unlocked CP at begining of the func */
-            //lock_cache_partitions(entry->cpu, linked->rt_param.job_params.cache_partitions,
-            //                      linked, rt);
+            lock_cache_partitions(entry->cpu, linked->rt_param.job_params.cache_partitions,
+                                  linked, rt);
         }
 	}
 	entry->linked = linked;
@@ -327,8 +326,8 @@ static inline uint32_t get_prev_cps(rt_domain_t *rt, pid_t pid)
 	task = pid_task(find_vpid(pid), PIDTYPE_PID);
 	if (!task)
 	{
-		printk("get_prev_cps: pid is null\n");
-		TRACE("[BUG] pid is null\n");
+		printk("get_prev_cps: pid %d is null\n", pid);
+		TRACE("[BUG] pid %d is null\n", pid);
 		return 0;
 	}
 	prev_cp_mask = tsk_rt(task)->job_params.cp_prev;
