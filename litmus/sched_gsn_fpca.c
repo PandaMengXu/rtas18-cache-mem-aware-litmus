@@ -1047,7 +1047,7 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	    entry->linked != entry->scheduled) {
 		if (entry->scheduled) {
 			/* We unlock cache at CACHE_WILL_CLEAR state */
-			//set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
+			set_cache_config(rt, entry->scheduled, CACHE_WILL_CLEAR);
 			/* not gonna be scheduled soon */
 			entry->scheduled->rt_param.scheduled_on = NO_CPU;
 			/* No need to set job_params.cache_partitions to 0 because cache_state has indicated that. */
@@ -1073,6 +1073,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 		if (entry->linked) {
 			entry->linked->rt_param.scheduled_on = entry->cpu;
 			next = entry->linked;
+            /* Reserve cache partition by setting cache controll registers
+             * We lock cache at CACHE_WILL_USE state */
 			set_cache_config(rt, next, CACHE_WILL_USE);
 			TRACE_TASK(next, "scheduled_on = P%d, rt.used_cp_mask=0x%x should include job.cp_mask=0x%x\n",
 					   smp_processor_id(), rt->used_cache_partitions, tsk_rt(next)->job_params.cache_partitions);
@@ -1084,7 +1086,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 		if (exists)
 			next = prev;
 
-	/* Task next job execute immediately after previous job finish
+	/** Update the cache stat to final state
+     *  Task next job execute immediately after previous job finish
  	 * entry->scheduled is still the task but we are at next job 
  	 * need to update the cache state status to CACHE_IN_USE because
  	 * rt.cache_partitions were cleared when previous job finish */
@@ -1094,6 +1097,9 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 			set_cache_config(rt, entry->scheduled, CACHE_IN_USE);
 		if (tsk_rt(entry->scheduled)->job_params.cache_state & CACHE_WILL_CLEAR)
 			set_cache_config(rt, entry->scheduled, CACHE_CLEARED);
+        /* Try your best to avoid flush cache in hot path!
+         * Try to do it in context switch
+         * Although context switch is also a hot path, it will only affect one task on one core */
         //if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
         //{
         //    selective_flush_cache_partitions(entry->cpu,
@@ -1153,10 +1159,71 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
 	TRACE_TASK(current, "switched to, CPs 0x%x\n", tsk_rt(current)->job_params.cache_partitions);
+    /* NB: job_params.cache_partitions may face race condition
+     * Think hard enough before you try to do any optimization!
+     * Race condition scenario
+     * Note: t0, t1 and t2 are very close to each other
+     * t0: Task 1 (T1) is switching to P0
+     *     Just get into this function and executed TRACE_TASK("switched to")
+     *     In log, we see T1 is RT task,
+     *             CPs is set to valid value (e.g., 0xC43CF)
+     *             and T1 is switched to P0
+     * t1: P1 scheduler decides to preempt T1 so as to schedule another task Ti
+     *     P1 scheduler will unlink T1 from P0, and 
+     *        set T1 job_params.cache_partitions to 0
+     *     P0 now keeps executing, and executes __lock_cache_ways_to_cpu(),
+     *        which will check if T1 job_params.cache_partitions is valid.
+     *        Because T1 job_params.cache_partitions is set to 0 by P1,
+     *        the sanity check will fail, and P0 will not lock CPs for T1
+     * t2: P2 scheduler decides to schedule T1 after P1 scheduler descheduled T1
+     *        This is because another task Tj may finish execution,
+     *        which make it possible to schedule T1
+     *     P2 set T1 job_params.cache_partitions 
+     *        to a potentially different valid value (e.g., 0xE7F20)
+     *     P0 is still in the middle of switching T1 onto core P0,
+     *     P2 scheduler can see this and link T1 back to P0 to avoid the migration.
+     *     P0 now keeps executing the context switch for T1, and
+     *        execute the TRACE("[BUG]") after P0 has finished executing the
+     *        __lock_cache_ways_to_cpu()
+     *        In log, we see P0 reports BUG message, 
+     *                but the message shows a valid CPs value for T1
+     * NB:
+     *    On X86, because we cannot selectively flush a specific cache partition
+     *        since HW cannot flush a specific cache partition, it does not matter
+     *        what T1 job_params.cache_partitions is set. 
+     *        In the race scenario above,
+     *        we have to flush cache for T1 once T1 starts to be switched to a core
+     *        So we just flush all T1 content from cache in the context switch and
+     *           do not need T1 CP setting
+     *   On ARM A9, PL310 allows us to flush a specific cache partition, so
+     *        we can just flush the cache partitions
+     *        that were used by another task while T1 is preempted
+     *        However, this solution requirs the CP setting information of T1,
+     *        which suffers from the data race
+     *        If we cannot get the *latest* CP setting of T1
+     *        when we *selectively* flush cache for T1,
+     *        we will leave some CPs
+     *        that are locked by T1 still hold the content of another task.
+     *        This will jeperdize the cache isolation we can achieve
+     *        To solve this, we can
+     *        a) Just flush all content of T1 from cache as we do on X86; or
+     *        b) Selectively flush T1 content
+     *           once T1 CP setting is changed in the scheduler. 
+     *        Option b) will put cache flush logic into schedule hot path, and
+     *           make schedule overhead very large.
+     *           Because schedule logic grab global log,
+     *           it will make the locking time very large and
+     *           blocking other cores for longer time
+     *        Although we may need further evaluation about these two choices,
+     *        I (Meng) think option a) is better because 
+     *          i)  better performance for large number of cores
+     *          ii) simpler implementation
+     **/
     if (is_realtime(current))
     {
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
         {
+#if defined(CONFIG_ARM)
             unsigned long flags;
             /* MX: We are doing I/O operaiton, should disable interrupt */
 	        raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
@@ -1173,12 +1240,18 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
                        current->comm, current->pid, tsk_rt(current)->job_params.job_no,
                        tsk_rt(current)->task_params.num_cache_partitions);
 			}
+#endif
+            /* TODO: on ARM, we need evaluate if race happens for job_params.cache_partitions 
+             *       and choose an option described above */
             selective_flush_cache_partitions(entry->cpu,
                 tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
+#if defined(CONFIG_ARM)
 	        raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
+#endif
 	        //raw_spin_unlock(&gsnfpca_cache_lock);
         }
 		
+#if defined(CONFIG_ARM)
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
         {
             int ret = 0;
@@ -1200,6 +1273,7 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
                        tsk_rt(current)->task_params.num_cache_partitions);
             }
         }
+#endif
 	
     }
 //	if (is_realtime(current))
