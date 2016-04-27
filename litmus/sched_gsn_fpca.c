@@ -193,12 +193,15 @@ static noinline void link_task_to_cpu(struct task_struct* linked,
 	cpu_entry_t *sched;
 	struct task_struct* tmp;
 	int on_cpu;
+    //rt_domain_t *rt = &gsnfpca;
 
 	BUG_ON(linked && !is_realtime(linked));
 
 	/* Currently linked task is set to be unlinked. */
 	if (entry->linked) {
 		entry->linked->rt_param.linked_on = NO_CPU;
+        /* Release CP for the core */
+        //unlock_cache_partitions(entry->cpu, entry->linked->rt_param.job_params.cache_partitions, rt);
 	}
 
 	/* Link new task to CPU. */
@@ -217,17 +220,27 @@ static noinline void link_task_to_cpu(struct task_struct* linked,
 			 */
 			if (entry != sched) {
 				TRACE_TASK(linked,
-					   "already scheduled on %d, updating link.\n",
+					   "already scheduled on %d, updating link and CP on affected cores.\n",
 					   sched->cpu);
+                /* Update CP for the sched->cpu by first unlock and then lock */
+                //unlock_cache_partitions(sched->cpu, sched->linked->rt_param.job_params.cache_partitions, rt);
 				tmp = sched->linked;
 				linked->rt_param.linked_on = sched->cpu;
 				sched->linked = linked;
 				update_cpu_position(sched);
+                //lock_cache_partitions(sched->cpu, sched->linked->rt_param.job_params.cache_partitions,
+                //                     sched->linked, rt);
 				linked = tmp;
 			}
 		}
 		if (linked) /* might be NULL due to swap */
+        {
 			linked->rt_param.linked_on = entry->cpu;
+            /* Update CP for entry->cpu by lock CP 
+             * entry->cpu has unlocked CP at begining of the func */
+            //lock_cache_partitions(entry->cpu, linked->rt_param.job_params.cache_partitions,
+            //                      linked, rt);
+        }
 	}
 	entry->linked = linked;
 #ifdef WANT_ALL_SCHED_EVENTS
@@ -1148,7 +1161,6 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 static void gsnfpca_finish_switch(struct task_struct *prev)
 {
 	cpu_entry_t* 	entry = &__get_cpu_var(gsnfpca_cpu_entries);
-	int ret = 0;
 
     if (prev)
         dbprintk_v("%s: task %s(%d) switch to task %s(%d)\n", __FUNCTION__,
@@ -1224,6 +1236,7 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
         {
 #if defined(CONFIG_ARM)
+            int ret = 0;
             unsigned long flags;
             /* MX: We are doing I/O operaiton, should disable interrupt */
 	        raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
