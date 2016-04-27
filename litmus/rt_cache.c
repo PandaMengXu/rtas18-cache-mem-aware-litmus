@@ -210,7 +210,7 @@ unlock_cache_partitions(int cpu, uint32_t cp_mask, rt_domain_t *rt)
 		cache_entry = &per_cpu(cpu_cache_entries, cpu);
 		if (cache_entry->used_cp != cp_mask)
 		{
-			TRACE("[BUG][P%d] has locked cp 0x%x before try to unlock cp 0x%x\n",
+			TRACE("[BUG][P%d] has unlock CP that has not been locked (locked: 0x%x, to unlock: 0x%x)\n",
 				  cache_entry->cpu, cache_entry->used_cp, cp_mask);
 		}
 		check_cache_status_invariant(cpu, cp_mask);

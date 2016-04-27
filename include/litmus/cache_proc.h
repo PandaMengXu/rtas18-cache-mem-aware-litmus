@@ -10,11 +10,11 @@
 #endif
 
 #if defined(CONFIG_ARM)
-void litmus_setup_lockdown(void __iomem*, u32);
+void litmus_setup_lockdown(void __iomem*, uint32_t);
 #endif
 
-int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask);
-int lock_cache_ways_to_cpu(int cpu, u32 ways_mask);
+int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask);
+int lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask);
 int get_cache_ways_to_cpu(int cpu);
 int unlock_all_cache_ways(void);
 int lock_all_cache_ways(void);

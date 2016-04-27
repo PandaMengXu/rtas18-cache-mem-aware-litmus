@@ -1152,14 +1152,15 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
         dbprintk_v("%s: task null switch to some new task\n", __FUNCTION__);
 
 	entry->scheduled = is_realtime(current) ? current : NULL;
-	TRACE_TASK(current, "switched to\n");
+	TRACE_TASK(current, "switched to, CPs 0x%x\n", tsk_rt(current)->job_params.cache_partitions);
     if (is_realtime(current))
     {
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
         {
-            //unsigned long flags;
-	        //raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
-	        raw_spin_lock(&gsnfpca_cache_lock);
+            unsigned long flags;
+            /* MX: We are doing I/O operaiton, should disable interrupt */
+	        raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
+	        //raw_spin_lock(&gsnfpca_cache_lock);
 			ret = __lock_cache_ways_to_cpu(entry->cpu, tsk_rt(current)->job_params.cache_partitions);
 			if (ret)
 			{
@@ -1174,19 +1175,19 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
 			}
             selective_flush_cache_partitions(entry->cpu,
                 tsk_rt(current)->job_params.cache_partitions, current, &gsnfpca);
-	        //raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
-	        raw_spin_unlock(&gsnfpca_cache_lock);
+	        raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
+	        //raw_spin_unlock(&gsnfpca_cache_lock);
         }
 		
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_CLEAR | CACHE_CLEARED))
         {
             int ret = 0;
-            //unsigned long flags;
-	        //raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
-	        raw_spin_lock(&gsnfpca_cache_lock);
+            unsigned long flags;
+	        raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
+	        //raw_spin_lock(&gsnfpca_cache_lock);
             ret = __unlock_cache_ways_to_cpu(entry->cpu);
-	        raw_spin_unlock(&gsnfpca_cache_lock);
-	        //raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
+	        //raw_spin_unlock(&gsnfpca_cache_lock);
+	        raw_spin_unlock_irqrestore(&gsnfpca_cache_lock, flags);
             if (ret)
             {
 				printk(KERN_ERR "[BUG][P%d] release CPs 0x%x for task %s(%d:%d) num_cps:%d fails\n",
@@ -1478,6 +1479,7 @@ static long gsnfpca_activate_plugin(void)
 	gsnfpca.release_master = atomic_read(&release_master_cpu);
 #endif
 
+    printk("NR_CPUS:%d\n", NR_CPUS);
 	for_each_online_cpu(cpu) {
 		entry = &per_cpu(gsnfpca_cpu_entries, cpu);
 		bheap_node_init(&entry->hn, entry);

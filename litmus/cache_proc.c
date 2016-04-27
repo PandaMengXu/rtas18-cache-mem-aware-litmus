@@ -41,36 +41,36 @@
 /** MX: The value should depend on platform
  *  TODO: make this value configurable */
 #if defined(CONFIG_ARM)
-static u32 lock_all_value = 0x0000ffff;
-static u32 unlock_all_value = 0x00000000;
-static u32 max_nr_ways = 16;
-static u32 nr_cpu_sockets = 1;
-static u32 nr_cores_per_socket = 4;
+static uint32_t lock_all_value = 0x0000ffff;
+static uint32_5 unlock_all_value = 0x00000000;
+static uint32_t max_nr_ways = 16;
+static uint32_t nr_cpu_sockets = 1;
+static uint32_t nr_cores_per_socket = 4;
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
 /* We assume the machine has CAT capability and 20 cache partitions */
-static u32 lock_all_value = 0xfffff;
-static u32 unlock_all_value = 0x00000;
-static u32 max_nr_ways = 20;
-static u32 nr_cpu_sockets = 1;
-static u32 nr_cores_per_socket = 4;
+static uint32_t lock_all_value = 0x0fffff;
+static uint32_t unlock_all_value = 0x00000;
+static uint32_t max_nr_ways = 20;
+static uint32_t nr_cpu_sockets = 1;
+static uint32_t nr_cores_per_socket = 4;
 #endif
 
-static u32 way_partitions[MAX_CPUS];
+static uint32_t way_partitions[MAX_CPUS];
 
 #if defined(CONFIG_ARM)
 static void __iomem *cache_base;
 static void __iomem *lockreg_d;
 static void __iomem *lockreg_i;
 
-static u32 cache_id;
+static uint32_t cache_id;
 
 struct mutex actlr_mutex;
 struct mutex l2x0_prefetch_mutex;
 #endif
 struct mutex lockdown_proc;
 
-static u32 way_partition_min;
-static u32 way_partition_max;
+static uint32_t way_partition_min;
+static uint32_t way_partition_max;
 
 static int zero = 0;
 static int one = 1;
@@ -83,7 +83,7 @@ static int pages_per_color = 0; // set as zero not to crash on boot
 static int pages_per_color_min = 0;
 static int pages_per_color_max = 1048576; // 1M x 4KB pages = 4GB per color
 
-static u32 max_nr_sets = 32;
+static uint32_t max_nr_sets = 32;
 
 static unsigned long set_active_mask = 0;
 unsigned long set_partition_min;
@@ -920,7 +920,7 @@ static void print_lockdown_registers(int cpu)
 #define PQR_REG     0xC8F
 
     int socket_i, core_i, cpu_i, cos_i;
-    u32 data[2];
+    uint32_t data[2];
    
 	memset(data, 0, sizeof(data));
     for (socket_i = 0; socket_i < nr_cpu_sockets; ++socket_i) {
@@ -990,7 +990,7 @@ static void test_lockdown(void *ignore)
 #endif
 
 #if defined(CONFIG_ARM)
-void litmus_setup_lockdown(void __iomem *base, u32 id)
+void litmus_setup_lockdown(void __iomem *base, uint32_t id)
 {
 	cache_base = base;
 	cache_id = id;
@@ -1125,7 +1125,7 @@ static void init_intel_cat(void)
 {
     struct cpuinfo_x86 *c;
     int socket_i, core_i, cpu_i;
-    u32 cos_i;
+    uint32_t cos_i;
 
     dbprintk("%s: called\n", __FUNCTION__);
     for(socket_i = 0; socket_i < nr_cpu_sockets; ++socket_i) {
@@ -1162,7 +1162,7 @@ static void litmus_setup_msr(void)
 }
 #endif /* CONFIG_ARM */
 
-static int way_mask_sanity_check(u32 ways_mask)
+static int way_mask_sanity_check(uint32_t ways_mask)
 {
     int ret = 0;
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
@@ -1173,6 +1173,7 @@ static int way_mask_sanity_check(u32 ways_mask)
     dbprintk("%s: called\n", __FUNCTION__);
     if (ways_mask > way_partition_max) {
         ret = -EINVAL;
+        TRACE("BUG: CPs 0x%x > way_partition_max (0x%x)\n", ways_mask, way_partition_max);
         printk(KERN_ERR "%s: caller tries to set cp: 0x%x\n", __FUNCTION__, ways_mask);
         goto out;
     }
@@ -1182,6 +1183,7 @@ static int way_mask_sanity_check(u32 ways_mask)
      */
     if ( hweight_long(ways_mask) < 2 )
     {
+        TRACE("BUG: CPs 0x%x must have at least 2 bits set\n", ways_mask);
         printk(KERN_ERR "%s: ways_mask (0x%x) must have at least 2 bits set\n",
                  __FUNCTION__, ways_mask);
         ret = -EINVAL;
@@ -1223,7 +1225,7 @@ out:
     return ret;
 }
 
-int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
+int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
 {
 	int ret = 0;
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
@@ -1235,12 +1237,15 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
     if ((ret = way_mask_sanity_check(ways_mask)) != 0) {
         printk(KERN_ERR "%s: does not pass way_mask_sanity_check: input (P%d 0x%x)\n",
                __FUNCTION__, cpu, ways_mask);
+        TRACE("BUG: P%d CPs 0x%x does not pass sanity_check\n", cpu, ways_mask);
         ret = -EINVAL;
         goto out;
     }
 
 	if (cpu < 0 || cpu >= num_online_cpus() || cpu >= MAX_CPUS) {
         printk(KERN_ERR "%s: input P%d out of range\n", __FUNCTION__, cpu);
+        TRACE("P%d out of range, num_online_cpus()=%d, MAX_CPUS=%d\n", cpu,
+              num_online_cpus(), MAX_CPUS);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -1259,6 +1264,7 @@ int __lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
 
     if (cos_i >= nr_lockregs) {
         cos_i = nr_lockregs - 1;
+        TRACE("[WARN] NO COS register for P%d, use COS %d for P%d\n", cpu, cos_i, cpu);
         printk("[WARN] NO COS register for P%d, use COS %d for P%d\n", cpu, cos_i, cpu);
     }
 
@@ -1269,7 +1275,7 @@ out:
 	return ret;
 }
 
-int lock_cache_ways_to_cpu(int cpu, u32 ways_mask)
+int lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
 {
 	int ret = 0;
 
@@ -1310,9 +1316,9 @@ int __get_used_cache_ways_on_cpu(int cpu, uint32_t *cp_mask)
 {
 	int ret = 0;
 	unsigned long flags;
-	u32 ways_mask_i, ways_mask_d;
+	uint32_t ways_mask_i, ways_mask_d;
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
-    u32 data[2];
+    uint32_t data[2];
     int cos_i;    
 #endif
 
@@ -1356,9 +1362,9 @@ static int __get_cache_ways_to_cpu(int cpu)
 {
 	int ret = 0;
 	unsigned long flags;
-	u32 ways_mask_i, ways_mask_d;
+	uint32_t ways_mask_i, ways_mask_d;
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
-    u32 data[2];
+    uint32_t data[2];
     int cos_i;    
 #endif
 	
@@ -1559,7 +1565,7 @@ int task_info_handler(struct ctl_table *table, int write, void __user *buffer,
            "color:0x%08lx color_index:%d "
 		   "blocks:%d out_of_time:%d np:%d sleep:%d "
 		   "state:%d sig:%d on_release_q:%d cp:0x%x rt.cp:0x%x "
-		   "scheduled_on:%ld linked_on:%d "
+		   "scheduled_on:%d linked_on:%d "
 		   "release_at:%lldns now:%lldns\n",
 		   task->comm, task->pid, tsk_rt(task)->job_params.job_no,
 		   tsk_rt(task)->task_params.period,
@@ -1621,7 +1627,7 @@ out:
  */
 static void actlr_change(int mode, int mask)
 {
-	u32 orig_value, new_value, reread_value;
+	uint32_t orig_value, new_value, reread_value;
 
 	if (0 != mode && 1 != mode) {
 		printk(KERN_WARNING "Called %s with mode != 0 and mode != 1.\n",
@@ -1684,7 +1690,7 @@ int litmus_l2_prefetch_hint_proc_handler(struct ctl_table *table, int write,
 #define L2X0_PREFETCH_DATA_PREFETCH	(1 << 28)
 static void l2x0_prefetch_change(int mode, int mask)
 {
-	u32 orig_value, new_value, reread_value;
+	uint32_t orig_value, new_value, reread_value;
 
 	if (0 != mode && 1 != mode) {
 		printk(KERN_WARNING "Called %s with mode != 0 and mode != 1.\n",
