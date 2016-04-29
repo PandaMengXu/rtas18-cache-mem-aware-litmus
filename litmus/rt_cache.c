@@ -145,7 +145,7 @@ lock_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_dom
 			TRACE("[BUG][P%d] has cp 0x%x (should be 0) locked before try to lock cp 0x%x\n",
 				  cache_entry->cpu, cache_entry->used_cp, cp_mask);
 		}
-		check_cache_status_invariant(cpu, cp_mask);
+		///check_cache_status_invariant(cpu, cp_mask);
 		cache_entry->used_cp = cp_mask;
 	}
 	
@@ -213,7 +213,7 @@ unlock_cache_partitions(int cpu, uint32_t cp_mask, rt_domain_t *rt)
 			TRACE("[BUG][P%d] try to unlock CP that has not been locked (locked: 0x%x, to unlock: 0x%x)\n",
 				  cache_entry->cpu, cache_entry->used_cp, cp_mask);
 		}
-		check_cache_status_invariant(cpu, cp_mask);
+		///check_cache_status_invariant(cpu, cp_mask);
 		cache_entry->used_cp = 0;
 	}
     
