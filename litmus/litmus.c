@@ -188,7 +188,12 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 		    printk(KERN_INFO "litmus: set_of_cp_init 0x%x is invalid (OK for cache-aware scheduler)\n",
 			       tp.set_of_cp_init);
 		//goto out_unlock;
-	}
+	} else /* set valid initial cp value */
+    {
+        /* We need to flush target content out of cache
+         * so that target can reload its content to specified cache partitions */
+        flush_cache_for_task(target);
+    }
 
 	target->rt_param.task_params = tp;
 
