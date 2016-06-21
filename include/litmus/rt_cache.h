@@ -14,7 +14,7 @@
 		    (y), cache_state_name(y))
 
 #define MSR_IA32_COS_REG_BASE               0x00000c90
-#define MSR_IA32_COS_REG_NUM                4
+#define MSR_IA32_COS_REG_NUM                CONFIG_NUMBER_COS_REG
 #define MSR_IA32_CBM_LENGTH_RTXEN           20
 #define MSR_IA32_CBM_MIN_NUM_BITS_RTXEN     2
 #define MSR_IA32_CBM_ALLSET_RTXEN           0xfffff

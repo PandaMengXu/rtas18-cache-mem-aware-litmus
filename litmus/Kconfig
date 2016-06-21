@@ -396,4 +396,20 @@ config LITMUS_DEBUG_VERBOSE
 
 endmenu
 
+menu "Cache Management"
+
+config NUMBER_COS_REG
+    int "Number of COS registers supported in system"
+    default 4
+    range 4 16
+    help
+      Each core is statically assign for a COS register.
+      Intel Xeon E5 v4 (broadwell processors) have 16 COS registers
+      Intel Xeon E5-2683 v4 has 16 COS registers
+      Intel Xeon E5-2618L v3 has 4 COS registers
+      For more information, goto https://github.com/01org/intel-cmt-cat
+      Incorrectly set this value may crash system at runtime
+
+endmenu
+
 endmenu

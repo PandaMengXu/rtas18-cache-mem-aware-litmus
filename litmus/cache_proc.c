@@ -1043,7 +1043,7 @@ void litmus_setup_lockdown(void __iomem *base, uint32_t id)
 #define CAT_L3_RESOURCE_TID_MASK 0x00000002
 #define CAT_CBM_LEN_MASK         0x0000001f
 #define CAT_CDP_SUPPORT_MASK     0x00000004
-#define CAT_COS_MAX_MASK         0x0000ffff
+#define CAT_COS_MAX_MASK         0x0000ffff /* CPUID to detect num of COS regs */
 
 static void detect_intel_cat_1(void)
 {
