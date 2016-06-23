@@ -175,25 +175,34 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
                tp.page_colors);
         goto out_unlock;
     }
-    
-	if (hweight_long(tp.set_of_cp_init) < MSR_IA32_CBM_MIN_NUM_BITS_RTXEN ||
-	    hweight_long(tp.set_of_cp_init) > MSR_IA32_CBM_LENGTH_RTXEN)
+
+    if ( strcmp(litmus->plugin_name, "GSN-FPCA2") ||
+         strcmp(litmus->plugin_name, "GSN-NPFPCA") )
 	{
-        /** gFPca requires the set_of_cp_init to be 0 to accept a RT task
-         *  So we do NOT print out the warning
-         *  We should not return error because for cache-agnostic RT task,
-         *  they may not want to invoke the cache management */
-        if ( strcmp(litmus->plugin_name, "GSN-FPCA2") &&
-             strcmp(litmus->plugin_name, "GSN-NPFPCA") )
-		    printk(KERN_INFO "litmus: set_of_cp_init 0x%x is invalid (OK for cache-aware scheduler)\n",
-			       tp.set_of_cp_init);
-		//goto out_unlock;
-	} else /* set valid initial cp value */
-    {
-        /* We need to flush target content out of cache
-         * so that target can reload its content to specified cache partitions */
+		if (tp.set_of_cp_init != 0)
+		{
+			printk(KERN_ERR "litmus: set_of_cp_init 0x%x must be 0 for cache-aware schedulers\n",
+				   tp.set_of_cp_init);
+			printk(KERN_ERR "litmus: cache-aware schedulers dynamically decide tasks' cache partitions\n");
+			goto out_unlock;
+		}
+		/* flush cache for cache-aware tasks */
         flush_cache_for_task(target);
-    }
+	} else { /* Non-cache-aware schedulers */
+		/* Configure a specific cache area for a task under non-cache-aware scheduler */
+		if (tp.set_of_cp_init != 0)
+		{
+			if (hweight_long(tp.set_of_cp_init) < MSR_IA32_CBM_MIN_NUM_BITS_RTXEN ||
+	    		hweight_long(tp.set_of_cp_init) > MSR_IA32_CBM_LENGTH_RTXEN)
+			{
+				printk(KERN_ERR "litmus: set_of_cp_init 0x%x is invalid\n",
+					tp.set_of_cp_init);
+				goto out_unlock;
+			}
+			/* flush cache for cache-aware tasks */
+        	flush_cache_for_task(target);
+		}
+	}
 
 	target->rt_param.task_params = tp;
 
