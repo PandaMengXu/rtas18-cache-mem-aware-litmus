@@ -1688,6 +1688,7 @@ static int __init init_gsn_fpca(void)
 	gsnfpca.used_cache_partitions = 0;
 	memset(gsnfpca.l2_cps, 0, sizeof(gsnfpca.l2_cps));
 	TRACE("init_gsn_fpca: rt.used_cp_mask=0x%x\n", gsnfpca.used_cache_partitions);
+	printk("[RTXEN][WARN] Cache-aware RT tasks must have be configured to have >= 2 cache partitions\n");
 	return register_sched_plugin(&gsn_fpca_plugin);
 }
 
