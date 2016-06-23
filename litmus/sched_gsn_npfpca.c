@@ -311,13 +311,11 @@ static inline int check_for_preemptions_helper(void)
 	int cache_ok = 0;
 	uint16_t cp_mask_to_use = 0; /* mask of cache partitions the task to use */
 	int num_cp_to_use = 0;
-	struct task_struct preempted_tasks;
 	cpu_entry_t *cpu_to_preempt = NULL;
 	int i;
 	struct list_head *iter, *tmp;
 	int has_preemption = 0;
 
-	INIT_LIST_HEAD(&tsk_rt(&preempted_tasks)->standby_list);
 
 	/*TODO: Assume no priority inversion first! */
 	task = __peek_ready(&gsnnpfpca);
@@ -365,11 +363,13 @@ static inline int check_for_preemptions_helper(void)
 				num_cp_to_use += 1;
 			}
 		}
-		/* Find the lowest priority CPU to preempt */
+		/* Find the lowest priority CPU to run
+		 * NB: non-preemptive cache-aware FP sched does not allow preemption
+		 * for RT tasks. But we allow RT task to preempt non-RT tasks */
 		entry = lowest_prio_cpu();
 		cur = entry->linked;
 
-		if (!cur || !is_realtime(cur) || fp_higher_prio(task, cur))
+		if (!cur || !is_realtime(cur))
 		{
 			if (!cpu_ok)
 			{
@@ -379,9 +379,9 @@ static inline int check_for_preemptions_helper(void)
 		}
 		TRACE_TASK(task, "Enough idle cache, cache_ok=%d, cpu_ok=%d, cp_mask_to_use=0x%x, cpu_to_preempt=%d\n",
 				   cache_ok, cpu_ok, cp_mask_to_use, cpu_to_preempt->cpu);
-	}
+	} /* Non-preemptible sched check if idle cpu and cache resource is enough*/
 
-	/* If preemptible, link task to preempted cpu, preempt preempted_tasks*/
+	/* Not enough idle cache or cpu resource, cannot schedule new task */
 	if ( !cache_ok || !cpu_ok )
 	{
 		TRACE_TASK(task, "Cannot preempt, cache_ok=%d, cpu_ok=%d, rt.used_cp_mask=0x%x, need %d cps\n",
@@ -389,7 +389,9 @@ static inline int check_for_preemptions_helper(void)
 		has_preemption = 0;
 		goto out;
 	}
-	/* Preempt preempted tasks */
+	/* Preempt preempted tasks 
+	 * NB: nFPca does not preempt RT tasks
+	 *     It only preempt non-RT tasks */
 	BUG_ON(!cpu_to_preempt);
 	/* Must take_ready before we requeue any task */
 	has_preemption = 1;
@@ -844,7 +846,7 @@ static void gsnnpfpca_finish_switch(struct task_struct *prev)
 			ret = __lock_cache_ways_to_cpu(entry->cpu, tsk_rt(current)->job_params.cache_partitions);
 			if (ret)
 			{
-				TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
+				TRACE("[BUG][P%d] Cache controller lock cache 0x%d fails\n",
 				     entry->cpu, tsk_rt(current)->job_params.cache_partitions);
 			}
             selective_flush_cache_partitions(entry->cpu,
@@ -860,7 +862,7 @@ static void gsnnpfpca_finish_switch(struct task_struct *prev)
 	        raw_spin_unlock(&gsnnpfpca_cache_lock);
             if (ret)
             {
-                TRACE("[BUG][P%d] PL310 unlock cache 0x%d fails\n",
+                TRACE("[BUG][P%d] Cache controller unlock cache 0x%d fails\n",
             		  entry->cpu);
             }
         }
@@ -1131,7 +1133,8 @@ static long gsnnpfpca_activate_plugin(void)
 
 static long gsnnpfpca_deactivate_plugin(void)
 {
-	destroy_domain_proc_info(&gsnnpfpca_domain_proc_info);
+    dbprintk("%s: called\n", __FUNCTION__);
+	destroy_domain_proc_info(&gsnfpca_domain_proc_info);
 	return 0;
 }
 
@@ -1186,10 +1189,19 @@ static int __init init_gsn_npfpca(void)
 		}
 	}
 	/* write back all cache */
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    dbprintk("wbinvd is called to flush whole cache\n");
+    __asm__ ("wbinvd");   
+#elif defined(CONFIG_ARM)
 	flush_cache_ways(0xffff);
+#endif
 	fp_domain_init(&gsnnpfpca, NULL, gsnnpfpca_release_jobs);
 	gsnnpfpca.used_cache_partitions = 0;
 	TRACE("init_gsn_npfpca: rt.used_cp_mask=0x%x\n", gsnnpfpca.used_cache_partitions);
+#if defined(CONFIG_X86)
+	printk("[RTXEN][WARN] Cache-aware RT tasks must have be configured to have >= 2 cache partitions\n");
+#endif
+
 	return register_sched_plugin(&gsn_npfpca_plugin);
 }
 
