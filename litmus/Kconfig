@@ -394,6 +394,16 @@ config LITMUS_DEBUG_VERBOSE
 
 	   If unsure, say No
 
+config LITMUS_DEBUG_SANITY_CHECK
+       bool "Check the scheduling invariant at schedule hot path"
+       default n
+       help
+           With this option enabled, we will invoke the check_for_invariant function for some schedulers, such as GSN-FPCA and GSN-NPFPCA, which will check the scheduling invariant when making scheduling decisions. Example of scheduling invariant: The pending task in ready queue must have lower priority than current running tasks for GSN-FP schedulers
+           Enable the option when debug the system and want to do sanity check on the scheduling decisions
+           Disable this option when evaluating the performance, because sanity check takes some extra time for scheduling overhead
+
+	   If unsure, say No
+
 endmenu
 
 menu "Cache Management"

@@ -313,7 +313,6 @@ static inline int check_for_preemptions_helper(void)
 	int num_cp_to_use = 0;
 	cpu_entry_t *cpu_to_preempt = NULL;
 	int i;
-	struct list_head *iter, *tmp;
 	int has_preemption = 0;
 
 
@@ -500,7 +499,8 @@ static noinline void job_completion(struct task_struct *t, int forced)
 		gsnnpfpca_job_arrival(t);
 }
 
-void gsnnpfpca_dump_cpus()
+#ifdef CONFIG_LITMUS_DEBUG_SANITY_CHECK
+static void gsnnpfpca_dump_cpus()
 {
 	int i;
 	cpu_entry_t *entry = NULL;
@@ -529,7 +529,9 @@ void gsnnpfpca_dump_cpus()
 		}
 	}
 }
+#endif
 
+#ifdef CONFIG_LITMUS_DEBUG_SANITY_CHECK
 /* gsnnpfpca_check_sched_invariant
  * Check sched invariant at end of gsnnpfpca_schedule
  * gsnnpfpca.lock is grabbed by caller
@@ -537,7 +539,7 @@ void gsnnpfpca_dump_cpus()
  * the current linked task on the CPU should NOT be preemptable
  * by the top task in ready_queue
  */
-void gsnnpfpca_check_sched_invariant()
+static void gsnnpfpca_check_sched_invariant()
 {
 	int i;
 	cpu_entry_t *entry = NULL;
@@ -606,6 +608,7 @@ void gsnnpfpca_check_sched_invariant()
 
 	return;
 }
+#endif
 
 /* Getting schedule() right is a bit tricky. schedule() may not make any
  * assumptions on the state of the current task since it may be called for a
@@ -808,9 +811,11 @@ static struct task_struct* gsnnpfpca_schedule(struct task_struct * prev)
 
 	sched_state_task_picked();
 
+#ifdef CONFIG_LITMUS_DEBUG_SANITY_CHECK
 	/* Check correctness of scheduler
   	 * NOTE: TODO: avoid such check in non-debug mode */
-	//gsnnpfpca_check_sched_invariant();
+	gsnnpfpca_check_sched_invariant();
+#endif
 
 	raw_spin_unlock(&gsnnpfpca_lock);
 
@@ -1134,7 +1139,7 @@ static long gsnnpfpca_activate_plugin(void)
 static long gsnnpfpca_deactivate_plugin(void)
 {
     dbprintk("%s: called\n", __FUNCTION__);
-	destroy_domain_proc_info(&gsnfpca_domain_proc_info);
+	destroy_domain_proc_info(&gsnnpfpca_domain_proc_info);
 	return 0;
 }
 
