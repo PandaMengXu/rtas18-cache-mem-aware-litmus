@@ -132,7 +132,7 @@ lock_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_dom
 {
 	cpu_cache_entry_t *cache_entry;
 	//uint32_t used_cp;
-    //int ret = 0;
+    int ret = 0;
 
 	if (cpu == NO_CPU)
 	{
@@ -150,7 +150,9 @@ lock_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_dom
 	}
 	
 	//raw_spin_lock(&rt->cache_lock);
-	//ret = __lock_cache_ways_to_cpu(cpu, cp_mask);
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+	ret = __lock_cache_ways_to_cpu(cpu, cp_mask);
+#endif
 	//raw_spin_unlock(&rt->cache_lock);
     //if (ret)
 	//{
@@ -218,7 +220,9 @@ unlock_cache_partitions(int cpu, uint32_t cp_mask, rt_domain_t *rt)
 	}
     
 	//raw_spin_lock(&rt->cache_lock);
-	//ret = __unlock_cache_ways_to_cpu(cpu);
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+	ret = __unlock_cache_ways_to_cpu(cpu);
+#endif
 	//raw_spin_unlock(&rt->cache_lock);
     if (ret)
 	{
@@ -369,7 +373,7 @@ int rtxen_cat_set_cbm(int cpu, uint32_t val)
         return -EINVAL;
     }
 
-    printk("[RTXEN INFO] set_cbm: CPU %d cbm to 0x%x\n", cpu, val);
+    dbprintk("[RTXEN INFO] set_cbm: CPU %d cbm to 0x%x\n", cpu, val);
     data.msr = MSR_IA32_COS_REG_BASE + cpu;
     data.val = val & MSR_IA32_CBM_MASK;
     smp_call_function_single(cpu, wrmsrl_smp, &data, 1);

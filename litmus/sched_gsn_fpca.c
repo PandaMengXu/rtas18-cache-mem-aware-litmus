@@ -954,8 +954,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	}
 #endif
 
-	//raw_spin_lock_irqsave(&gsnfpca_lock, flags);
-	raw_spin_lock(&gsnfpca_lock);
+	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
+	//raw_spin_lock(&gsnfpca_lock);
 
 	/* sanity checking */
 	BUG_ON(entry->scheduled && entry->scheduled != prev);
@@ -1130,10 +1130,12 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 
 	/* Check correctness of scheduler
   	 * NOTE: TODO: avoid such check in non-debug mode */
-	//gsnfpca_check_sched_invariant();
+#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+	gsnfpca_check_sched_invariant();
+#endif
 
-	//raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
-	raw_spin_unlock(&gsnfpca_lock);
+	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
+	//raw_spin_unlock(&gsnfpca_lock);
 
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(next, "gsnfpca_lock released\n");
@@ -1534,6 +1536,7 @@ static void gsnfpca_setup_domain_proc(void)
 	int num_rt_cpus = num_online_cpus() - (release_master != NO_CPU);
 	struct cd_mapping *map;
 
+    printk(KERN_ERR "gsnfpca_setup_domain_proc\n");
 	memset(&gsnfpca_domain_proc_info, sizeof(gsnfpca_domain_proc_info), 0);
 	init_domain_proc_info(&gsnfpca_domain_proc_info, num_rt_cpus, 1);
 	gsnfpca_domain_proc_info.num_cpus = num_rt_cpus;
@@ -1605,6 +1608,8 @@ static long gsnfpca_activate_plugin(void)
 	gsnfpca.used_cache_partitions = 0;
 	TRACE("gsnfpca_activate_plugin used_cp_mask=0x%x\n",
 		  gsnfpca.used_cache_partitions);
+    printk(KERN_ERR "gsnfpca_activate_plugin used_cp_mask=0x%x\n",
+           gsnfpca.used_cache_partitions);
 
 	return 0;
 }

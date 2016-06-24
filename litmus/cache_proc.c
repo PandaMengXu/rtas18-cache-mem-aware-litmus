@@ -1234,6 +1234,7 @@ int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
 	
     dbprintk("%s: CPs set to 0x%x on P%d\n", __FUNCTION__,
               ways_mask, cpu);
+#if defined(CONFIG_LITMUS_DEBUG_CHECK_INVARIANT)
     if ((ret = way_mask_sanity_check(ways_mask)) != 0) {
         printk(KERN_ERR "%s: does not pass way_mask_sanity_check: input (P%d 0x%x)\n",
                __FUNCTION__, cpu, ways_mask);
@@ -1241,6 +1242,7 @@ int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
         ret = -EINVAL;
         goto out;
     }
+#endif
 
 	if (cpu < 0 || cpu >= num_online_cpus() || cpu >= MAX_CPUS) {
         printk(KERN_ERR "%s: input P%d out of range\n", __FUNCTION__, cpu);
