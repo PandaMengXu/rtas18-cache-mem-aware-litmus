@@ -851,6 +851,7 @@ static void gsnfpca_check_sched_invariant(void)
 	int cpu_ok = 0;
 	int preempted_cpu = -1;
 
+    dbprintk("%s called on P%d\n", __FUNCTION__, smp_processor_id());
 	qtask = __peek_ready(&gsnfpca);
 	/* No ready RT task */
 	if (!qtask)

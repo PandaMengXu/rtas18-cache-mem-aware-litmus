@@ -42,7 +42,7 @@
  *  TODO: make this value configurable */
 #if defined(CONFIG_ARM)
 static uint32_t lock_all_value = 0x0000ffff;
-static uint32_5 unlock_all_value = 0x00000000;
+static uint32_t unlock_all_value = 0x00000000;
 static uint32_t max_nr_ways = 16;
 static uint32_t nr_cpu_sockets = 1;
 static uint32_t nr_cores_per_socket = 4;
