@@ -837,7 +837,7 @@ void flush_cache_for_task(struct task_struct *tsk)
     int nr_pages = 0;
 
     dbprintk("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
-    //raw_spin_lock(&flushing_code_lock);
+    raw_spin_lock(&flushing_code_lock);
 
     down_read(&tsk->mm->mmap_sem);
     TRACE_TASK(tsk, "FLUSH_CACHE_FOR_TASK\n");
@@ -902,7 +902,7 @@ next:
 
     up_read(&tsk->mm->mmap_sem);
 
-    //raw_spin_unlock(&flushing_code_lock);
+    raw_spin_unlock(&flushing_code_lock);
 }
 #endif
 

@@ -195,6 +195,7 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
          *     Since cache-aware scheduler will flush the task's cache before the task is
          *     scheduled to execute, we do NOT have to take the trouble here! */
         //flush_cache_for_task(target); /* Think super hard before uncomment this line! */
+        printk(KERN_ERR "litmus: try to flush under cache-aware scheduler\n");
 	} else { /* Non-cache-aware schedulers */
 		/* Configure a specific cache area for a task under non-cache-aware scheduler */
 		if (tp.set_of_cp_init != 0)
@@ -207,7 +208,8 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 				goto out_unlock;
 			}
 			/* flush cache for cache-aware tasks */
-        	flush_cache_for_task(target);
+        	//flush_cache_for_task(target);
+        	printk(KERN_ERR "litmus: try to flush under non-cache-aware scheduler\n");
 		}
 	}
 
