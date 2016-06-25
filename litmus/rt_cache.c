@@ -151,7 +151,7 @@ lock_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_dom
 	
 	//raw_spin_lock(&rt->cache_lock);
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
-	//ret = __lock_cache_ways_to_cpu(cpu, cp_mask);
+	ret = __lock_cache_ways_to_cpu(cpu, cp_mask);
 #endif
 	//raw_spin_unlock(&rt->cache_lock);
     //if (ret)
@@ -221,7 +221,7 @@ unlock_cache_partitions(int cpu, uint32_t cp_mask, rt_domain_t *rt)
     
 	//raw_spin_lock(&rt->cache_lock);
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
-	//ret = __unlock_cache_ways_to_cpu(cpu);
+	ret = __unlock_cache_ways_to_cpu(cpu);
 #endif
 	//raw_spin_unlock(&rt->cache_lock);
     if (ret)
