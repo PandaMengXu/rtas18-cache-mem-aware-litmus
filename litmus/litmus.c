@@ -176,6 +176,7 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
         goto out_unlock;
     }
 
+    printk(KERN_INFO "litmus: scheduler %s\n", litmus->plugin_name);
     if ( strcmp(litmus->plugin_name, "GSN-FPCA2") ||
          strcmp(litmus->plugin_name, "GSN-NPFPCA") )
 	{
@@ -186,8 +187,14 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 			printk(KERN_ERR "litmus: cache-aware schedulers dynamically decide tasks' cache partitions\n");
 			goto out_unlock;
 		}
-		/* flush cache for cache-aware tasks */
-        flush_cache_for_task(target);
+		/* flush cache for cache-aware tasks
+         * NB: We cannot flush cache for cache-aware scheduler which may flush cache inside scheduler 
+         * Reason: This function is called with tasklist_lock held, which serializes schedule()
+         *     When cache-aware scheduler is invoked, it will grab tasklist_lock. 
+         *     You have to be VERY CAREFULY about the lock order; otherwise, deadlock occurs
+         *     Since cache-aware scheduler will flush the task's cache before the task is
+         *     scheduled to execute, we do NOT have to take the trouble here! */
+        //flush_cache_for_task(target); /* Think super hard before uncomment this line! */
 	} else { /* Non-cache-aware schedulers */
 		/* Configure a specific cache area for a task under non-cache-aware scheduler */
 		if (tp.set_of_cp_init != 0)

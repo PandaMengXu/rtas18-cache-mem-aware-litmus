@@ -792,7 +792,7 @@ void flush_cache_ways(uint32_t ways)
 
 // 0: exclude the code area from flushing
 static int flushing_code = 1;
-static raw_spinlock_t flushing_code_lock;
+static raw_spinlock_t flushing_code_lock; /* protect flushing_code from writing via /proc */
 
 int flushing_code_handler(struct ctl_table *table, int write,
         void __user *buffer, size_t *lenp, loff_t *ppos)
@@ -836,11 +836,12 @@ void flush_cache_for_task(struct task_struct *tsk)
     struct vm_area_struct *vma_itr = NULL;
     int nr_pages = 0;
 
-    dbprintk("%s: called\n", __FUNCTION__);
-    raw_spin_lock(&flushing_code_lock);
+    dbprintk("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
+    //raw_spin_lock(&flushing_code_lock);
 
     down_read(&tsk->mm->mmap_sem);
     TRACE_TASK(tsk, "FLUSH_CACHE_FOR_TASK\n");
+    dbprintk("%s: FLUSH_CACHE_FOR_TASK pid:%d\n", __FUNCTION__, tsk->pid);
     vma_itr = tsk->mm->mmap;
 
     while (vma_itr != NULL) {
@@ -901,7 +902,7 @@ next:
 
     up_read(&tsk->mm->mmap_sem);
 
-    raw_spin_unlock(&flushing_code_lock);
+    //raw_spin_unlock(&flushing_code_lock);
 }
 #endif
 
@@ -1232,7 +1233,7 @@ int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
     int cos_i;
 #endif
 	
-    dbprintk("%s: CPs set to 0x%x on P%d\n", __FUNCTION__,
+    dbprintk("%s: reserve 0x%x CPs for P%d\n", __FUNCTION__,
               ways_mask, cpu);
 #if defined(CONFIG_LITMUS_DEBUG_CHECK_INVARIANT)
     if ((ret = way_mask_sanity_check(ways_mask)) != 0) {
@@ -1254,8 +1255,8 @@ int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
 
 	way_partitions[cpu] = ways_mask;
 
-    dbprintk("%s: Cache partitions 0x%x are initialized as available\n",
-             __FUNCTION__, way_partitions[cpu]);
+    dbprintk("%s: reserve 0x%x cache partitions for core P%d\n",
+             __FUNCTION__, way_partitions[cpu], cpu);
 #if defined(CONFIG_ARM)
 	writel_relaxed(~way_partitions[cpu], ld_d_reg(cpu));
 	//writel_relaxed(~way_partitions[cpu*2], ld_i_reg(cpu));

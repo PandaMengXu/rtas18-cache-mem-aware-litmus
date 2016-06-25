@@ -954,8 +954,8 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 	}
 #endif
 
-	raw_spin_lock_irqsave(&gsnfpca_lock, flags);
-	//raw_spin_lock(&gsnfpca_lock);
+	//raw_spin_lock_irqsave(&gsnfpca_lock, flags);
+	raw_spin_lock(&gsnfpca_lock);
 
 	/* sanity checking */
 	BUG_ON(entry->scheduled && entry->scheduled != prev);
@@ -1128,14 +1128,13 @@ static struct task_struct* gsnfpca_schedule(struct task_struct * prev)
 
 	sched_state_task_picked();
 
-	/* Check correctness of scheduler
-  	 * NOTE: TODO: avoid such check in non-debug mode */
-#if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+	/* Check correctness of scheduler */
+#if defined(CONFIG_LITMUS_DEBUG_CHECK_INVARIANT)
 	gsnfpca_check_sched_invariant();
 #endif
 
-	raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
-	//raw_spin_unlock(&gsnfpca_lock);
+	//raw_spin_unlock_irqrestore(&gsnfpca_lock, flags);
+	raw_spin_unlock(&gsnfpca_lock);
 
 #ifdef WANT_ALL_SCHED_EVENTS
 	TRACE_TASK(next, "gsnfpca_lock released\n");
