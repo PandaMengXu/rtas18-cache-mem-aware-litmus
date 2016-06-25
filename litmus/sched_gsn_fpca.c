@@ -1242,6 +1242,12 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
             /* MX: We are doing I/O operaiton, should disable interrupt */
 	        raw_spin_lock_irqsave(&gsnfpca_cache_lock, flags);
 	        //raw_spin_lock(&gsnfpca_cache_lock);
+	        /* NB: task->job_params.cache_partitions have data race among cores
+             * We didn't handle this data race for now because
+             * a) core's cache partition setting for the task is dtermined by
+             *    the task's latest cache setting
+             * b) we flush all cache of a task and do not need the cache_partitions
+             *    to determine which cache partitions should be flushed */
 			ret = __lock_cache_ways_to_cpu(entry->cpu, tsk_rt(current)->job_params.cache_partitions);
 			if (ret)
 			{

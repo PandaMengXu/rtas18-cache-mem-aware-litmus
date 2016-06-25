@@ -1233,17 +1233,20 @@ int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
     int cos_i;
 #endif
 	
-    dbprintk("%s: reserve 0x%x CPs for P%d\n", __FUNCTION__,
+    dbprintk("%s: To reserve 0x%x CPs for P%d\n", __FUNCTION__,
               ways_mask, cpu);
-#if defined(CONFIG_LITMUS_DEBUG_CHECK_INVARIANT)
+    /* Always check if ways_mask is valid before we set cache register
+     * Invalid ways_mask value will crash the system in weird ways and
+     * the crash is hard to debug */
     if ((ret = way_mask_sanity_check(ways_mask)) != 0) {
         printk(KERN_ERR "%s: does not pass way_mask_sanity_check: input (P%d 0x%x)\n",
                __FUNCTION__, cpu, ways_mask);
-        TRACE("BUG: P%d CPs 0x%x does not pass sanity_check\n", cpu, ways_mask);
+        TRACE("BUG: P%d CPs 0x%x does not pass sanity_check;"
+              "may be caused by data race on tasks cache partitions setting \n",
+               cpu, ways_mask);
         ret = -EINVAL;
         goto out;
     }
-#endif
 
 	if (cpu < 0 || cpu >= num_online_cpus() || cpu >= MAX_CPUS) {
         printk(KERN_ERR "%s: input P%d out of range\n", __FUNCTION__, cpu);
@@ -1261,8 +1264,6 @@ int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
 	writel_relaxed(~way_partitions[cpu], ld_d_reg(cpu));
 	//writel_relaxed(~way_partitions[cpu*2], ld_i_reg(cpu));
 #elif defined(CONFIG_X86) || defined(CONFIG_X86_64)
-    dbprintk("%s: set P%d cos to 0x%x...\n", __FUNCTION__,
-             cpu, way_partitions[cpu]);
     cos_i = cpu % nr_cores_per_socket;
 
     if (cos_i >= nr_lockregs) {
@@ -1271,7 +1272,9 @@ int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
         printk("[WARN] NO COS register for P%d, use COS %d for P%d\n", cpu, cos_i, cpu);
     }
 
-    wrmsr_safe_on_cpu(cpu, COS_REG_BASE + cos_i, way_partitions[cpu], 0);
+    BUG_ON( hweight_long(way_partitions[cpu]) < 2 ||
+            hweight_long(way_partitions[cpu]) > MSR_IA32_CBM_LENGTH_RTXEN );
+   // wrmsr_safe_on_cpu(cpu, COS_REG_BASE + cos_i, way_partitions[cpu], 0);
 #endif
 	
 out:

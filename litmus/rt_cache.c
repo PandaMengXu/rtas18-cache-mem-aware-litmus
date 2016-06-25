@@ -149,11 +149,11 @@ lock_cache_partitions(int cpu, uint32_t cp_mask, struct task_struct *tsk, rt_dom
 		cache_entry->used_cp = cp_mask;
 	}
 	
-	//raw_spin_lock(&rt->cache_lock);
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+    raw_spin_lock(&rt->cache_lock);
 	ret = __lock_cache_ways_to_cpu(cpu, cp_mask);
+	raw_spin_unlock(&rt->cache_lock);
 #endif
-	//raw_spin_unlock(&rt->cache_lock);
     //if (ret)
 	//{
 	//	TRACE("[BUG][P%d] PL310 lock cache 0x%d fails\n",
@@ -219,11 +219,11 @@ unlock_cache_partitions(int cpu, uint32_t cp_mask, rt_domain_t *rt)
 		cache_entry->used_cp = 0;
 	}
     
-	//raw_spin_lock(&rt->cache_lock);
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
+	raw_spin_lock(&rt->cache_lock);
 	ret = __unlock_cache_ways_to_cpu(cpu);
+	raw_spin_unlock(&rt->cache_lock);
 #endif
-	//raw_spin_unlock(&rt->cache_lock);
     if (ret)
 	{
 		TRACE("[BUG][P%d] Unlock cache 0x%d fails\n",
