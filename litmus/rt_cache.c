@@ -316,6 +316,9 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 		/* PL310 unlock cache
  		 * A task may be preempted when the task have been linked to a CPU but
  		 * have not been scheduled on the CPU */
+        /* NB: set_cache_config function may likely be called with irq disabled
+         *     Any callee from set_cache_config cannot depend on irq delivery
+         *     Otherwise, deadlock will occur when irq delivery to the self CPU */
 		unlock_cache_partitions(tsk_rt(task)->linked_on,
 				tsk_rt(task)->job_params.cache_partitions, rt);
 		rt->used_cache_partitions &= 
@@ -334,6 +337,7 @@ set_cache_config(rt_domain_t *rt, struct task_struct *task, cache_state_t s)
 			TRACE_TASK(task, "[ERROR] Lock a cp already used rt.used_cp_mask=0x%x job.cp_mask=0x%x\n",
 					   rt->used_cache_partitions, tsk_rt(task)->job_params.cache_partitions);
 		/* PL310 lock cache */
+        /* NB: set_cache_config function may likely be called with irq disabled */
 		lock_cache_partitions(tsk_rt(task)->linked_on,
 				tsk_rt(task)->job_params.cache_partitions, task, rt);
 		rt->used_cache_partitions |=

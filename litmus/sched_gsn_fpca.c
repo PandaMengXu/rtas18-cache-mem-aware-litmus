@@ -1236,6 +1236,11 @@ static void gsnfpca_finish_switch(struct task_struct *prev)
     {
         if (tsk_rt(current)->job_params.cache_state & (CACHE_WILL_USE | CACHE_IN_USE))
         {
+            /* NB: task cache_partitions may be modified by other cores
+             *     when the task is doing context switch.
+             *     We may lock/unlock cache_partitions with the tale value
+             *     instead of the latest value, if we set cache controller
+             *     value here */
 #if defined(CONFIG_ARM)
             int ret = 0;
             unsigned long flags;
