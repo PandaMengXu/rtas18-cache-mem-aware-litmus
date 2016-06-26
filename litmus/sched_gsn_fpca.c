@@ -1708,5 +1708,4 @@ static int __init init_gsn_fpca(void)
 	return register_sched_plugin(&gsn_fpca_plugin);
 }
 
-
 module_init(init_gsn_fpca);
