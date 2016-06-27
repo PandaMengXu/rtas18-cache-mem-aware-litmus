@@ -177,8 +177,8 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
     }
 
     printk(KERN_INFO "litmus: scheduler %s\n", litmus->plugin_name);
-    if ( strcmp(litmus->plugin_name, "GSN-FPCA2") ||
-         strcmp(litmus->plugin_name, "GSN-NPFPCA") )
+    if ( !strcmp(litmus->plugin_name, "GSN-FPCA2") ||
+         !strcmp(litmus->plugin_name, "GSN-NPFPCA") )
 	{
 		if (tp.set_of_cp_init != 0)
 		{
