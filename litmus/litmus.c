@@ -207,8 +207,8 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 					tp.set_of_cp_init);
 				goto out_unlock;
 			}
-			/* flush cache for cache-aware tasks */
-        	//flush_cache_for_task(target);
+			/* flush cache for non-cache-aware tasks */
+        	flush_cache_for_task(target);
         	printk(KERN_ERR "litmus: try to flush under non-cache-aware scheduler\n");
 		}
 	}
