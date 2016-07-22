@@ -836,6 +836,7 @@ void flush_cache_for_task(struct task_struct *tsk)
     struct vm_area_struct *vma_itr = NULL;
     int nr_pages = 0;
 
+	BUG_ON(tsk == NULL);
     dbprintk("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
     raw_spin_lock(&flushing_code_lock);
 

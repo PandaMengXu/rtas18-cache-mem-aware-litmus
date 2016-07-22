@@ -108,6 +108,7 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 	struct rt_task tp;
 	struct task_struct *target;
 	int retval = -EINVAL;
+	int to_flush_task = 0; /* delay the cache flush after irq is unmasked */
 
 	printk("Setting up rt task parameters for process %d.\n", pid);
 
@@ -208,7 +209,8 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 				goto out_unlock;
 			}
 			/* flush cache for non-cache-aware tasks */
-        	flush_cache_for_task(target);
+        	//flush_cache_for_task(target); /* flush task here will cause fatal page fault. Why?! */
+			to_flush_task = 1;
         	printk(KERN_ERR "litmus: try to flush under non-cache-aware scheduler\n");
 		}
 	}
@@ -219,6 +221,8 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
       out_unlock:
 	read_unlock_irq(&tasklist_lock);
       out:
+	if ( to_flush_task == 1 )
+    	flush_cache_for_task(target);
 	return retval;
 }
 

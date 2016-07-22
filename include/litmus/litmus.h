@@ -13,13 +13,13 @@ extern atomic_t release_master_cpu;
 #endif
 
 #ifdef CONFIG_LITMUS_DEBUG_DEBUG
-#define dbprintk(format, args...)   printk(KERN_DEBUG format, ##args)
+#define dbprintk(format, args...)   printk(KERN_WARNING format, ##args)
 #else
 #define dbprintk(format, args...)
 #endif
 
 #ifdef CONFIG_LITMUS_DEBUG_VERBOSE
-#define dbprintk_v(format, args...)   printk(KERN_DEBUG format, ##args)
+#define dbprintk_v(format, args...)   printk(KERN_WARNING format, ##args)
 #else
 #define dbprintk_v(format, args...)
 #endif
