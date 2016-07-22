@@ -127,6 +127,17 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 		goto out_unlock;
 	}
 
+    /**
+     * Meng: We allow parameter changes when a task has already been real-time task
+     * We do NOT have any protection for the data race on the real-time parameter of
+     * the task.
+     * If the real-time field that is related to the real-time scheduling decision is changed,
+     * it will cause *undefined* behavior for the scheduler behavior!
+     * THIS IS A DIRTY HACK for the paper experiment evaluation to
+     * show dynamic cache management benefit!
+     * We need to be able to change a task cache partition setting when the task is running
+     */
+#if 0
 	if (is_realtime(target)) {
 		/* The task is already a real-time task.
 		 * We cannot not allow parameter changes at this point.
@@ -134,6 +145,7 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 		retval = -EBUSY;
 		goto out_unlock;
 	}
+#endif
 
 	/* set relative deadline to be implicit if left unspecified */
 	if (tp.relative_deadline == 0)
