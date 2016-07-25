@@ -234,7 +234,10 @@ asmlinkage long sys_set_rt_task_param(pid_t pid, struct rt_task __user * param)
 	read_unlock_irq(&tasklist_lock);
       out:
 	if ( to_flush_task == 1 )
+    {
+        _update_cbm_reg(target);
     	flush_cache_for_task(target);
+    }
 	return retval;
 }
 
