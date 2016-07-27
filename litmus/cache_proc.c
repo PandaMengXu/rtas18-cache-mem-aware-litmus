@@ -1275,9 +1275,9 @@ int __lock_cache_ways_to_cpu(int cpu, uint32_t ways_mask)
 
     BUG_ON( hweight_long(way_partitions[cpu]) < 2 ||
             hweight_long(way_partitions[cpu]) > MSR_IA32_CBM_LENGTH_RTXEN );
-    //wrmsr_safe_on_cpu(cpu, COS_REG_BASE + cos_i, way_partitions[cpu], 0);
+    wrmsr_safe_on_cpu(cpu, COS_REG_BASE + cos_i, way_partitions[cpu], 0);
     //wrmsr_on_cpu(cpu, COS_REG_BASE + cos_i, way_partitions[cpu], 0);
-    wrmsrl(COS_REG_BASE + cos_i, way_partitions[cpu] | (0L << 32));
+    //wrmsrl(COS_REG_BASE + cos_i, way_partitions[cpu] | (0L << 32));
 #endif
 	
 out:
