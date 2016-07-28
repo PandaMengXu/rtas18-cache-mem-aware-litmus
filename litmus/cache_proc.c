@@ -835,10 +835,14 @@ void flush_cache_for_task(struct task_struct *tsk)
 {
     struct vm_area_struct *vma_itr = NULL;
     int nr_pages = 0;
+    int is_flush_code = 0;
+    unsigned long flags;
 
 	BUG_ON(tsk == NULL);
     dbprintk("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
-    raw_spin_lock(&flushing_code_lock);
+    raw_spin_lock_irqsave(&flushing_code_lock, flags);
+    is_flush_code = flushing_code;
+    raw_spin_unlock_irqrestore(&flushing_code_lock, flags);
 
     down_read(&tsk->mm->mmap_sem);
     TRACE_TASK(tsk, "FLUSH_CACHE_FOR_TASK\n");
@@ -852,7 +856,7 @@ void flush_cache_for_task(struct task_struct *tsk)
 
         if ( !(vma_itr->vm_flags & (VM_READ | VM_WRITE)) )
             goto next;
-        if ( !flushing_code && (vma_itr->vm_flags & VM_EXEC) )
+        if ( !is_flush_code && (vma_itr->vm_flags & VM_EXEC) )
             goto next;
 #if 0
         num_pages = (vma_itr->vm_end - vma_itr->vm_start) / PAGE_SIZE;
@@ -902,8 +906,6 @@ next:
     }
 
     up_read(&tsk->mm->mmap_sem);
-
-    raw_spin_unlock(&flushing_code_lock);
 }
 #endif
 
