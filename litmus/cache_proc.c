@@ -843,6 +843,8 @@ void flush_cache_for_task(struct task_struct *tsk)
     down_read(&tsk->mm->mmap_sem);
     TRACE_TASK(tsk, "FLUSH_CACHE_FOR_TASK\n");
     dbprintk("%s: FLUSH_CACHE_FOR_TASK pid:%d\n", __FUNCTION__, tsk->pid);
+	dbprintk("%s: to flush pid (%d) (pgd=%lx) in pid (%d) (pgd=%lx) context\n",
+			 __FUNCTION__, tsk->pid, tsk->mm->pgd->pgd, current->pid, current->mm->pgd->pgd);
     vma_itr = tsk->mm->mmap;
 
     while (vma_itr != NULL) {
@@ -893,8 +895,8 @@ void flush_cache_for_task(struct task_struct *tsk)
             put_page(cur_page);
         }
 #else   /* NB: This one may not be working */
-        dbprintk("%s: flush [0x%016lx - 0x%016lx)\n", __FUNCTION__,
-                 vma_itr->vm_start, vma_itr->vm_end);
+        dbprintk("%s: flush [0x%016lx - 0x%016lx) flags=%x\n", __FUNCTION__,
+                 vma_itr->vm_start, vma_itr->vm_end, vma_itr->vm_flags);
         clflush_cache_range(vma_itr->vm_start, vma_itr->vm_end - vma_itr->vm_start);
 #endif
 next:
