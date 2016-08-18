@@ -36,6 +36,8 @@
 
 #include <linux/uaccess.h>
 
+#include <asm/mmu_context.h>
+
 #define MAX_CPUS   32 
 
 /** MX: The value should depend on platform
@@ -837,6 +839,8 @@ void flush_cache_for_task(struct task_struct *tsk)
     int nr_pages = 0;
     int is_flush_code = 0;
     unsigned long flags;
+    struct task_struct *tsk_invoke = current;
+	//struct rq *rq;
 
 	BUG_ON(tsk == NULL);
     dbprintk("%s: called on P%d\n", __FUNCTION__, smp_processor_id());
@@ -845,10 +849,23 @@ void flush_cache_for_task(struct task_struct *tsk)
     raw_spin_unlock_irqrestore(&flushing_code_lock, flags);
 
     down_read(&tsk->mm->mmap_sem);
+
+	if ( tsk->pid != current->pid )
+	{
+		dbprintk("%s: flush pid (%d) from another pid (%d)\n",
+				 __FUNCTION__, tsk->pid, current->pid);
+		dbprintk("%s: switch_mm from %d to %d\n", __FUNCTION__, current->pid, tsk->pid);
+		//rq = cpu_rq(smp_processor_id());
+		//context_switch(rq, current, tsk);
+        switch_mm(current->active_mm, tsk->mm, tsk);
+        dbprintk("%s: Should in pid (%d) context now\n", __FUNCTION__, tsk->pid);
+	}
+
     TRACE_TASK(tsk, "FLUSH_CACHE_FOR_TASK\n");
     dbprintk("%s: FLUSH_CACHE_FOR_TASK pid:%d\n", __FUNCTION__, tsk->pid);
 	dbprintk("%s: to flush pid (%d) (pgd=%lx) in pid (%d) (pgd=%lx) context\n",
 			 __FUNCTION__, tsk->pid, tsk->mm->pgd->pgd, current->pid, current->mm->pgd->pgd);
+
     vma_itr = tsk->mm->mmap;
 
     while (vma_itr != NULL) {
@@ -858,6 +875,12 @@ void flush_cache_for_task(struct task_struct *tsk)
 
         if ( !(vma_itr->vm_flags & (VM_READ | VM_WRITE)) )
             goto next;
+		if ( vma_itr->vm_flags & VM_GROWSDOWN )
+		{
+        	dbprintk("%s: skip VM_GROWSDOWN [0x%016lx - 0x%016lx) flags=%x\n", __FUNCTION__,
+                 vma_itr->vm_start, vma_itr->vm_end, vma_itr->vm_flags);
+			goto next;
+		}
         if ( !is_flush_code && (vma_itr->vm_flags & VM_EXEC) )
             goto next;
 #if 0
@@ -907,7 +930,17 @@ next:
         vma_itr = vma_itr->vm_next;
     }
 
+	if ( tsk != tsk_invoke )
+	{
+		dbprintk("%s: switch_mm from %d back to %d\n", __FUNCTION__, tsk->pid, tsk_invoke->pid);
+		//context_switch(rq, tsk, tsk_invoke);
+        switch_mm(tsk->mm, tsk_invoke->mm, tsk);
+        dbprintk("%s: Should in pid (%d) context now, current pid is %d\n",
+                 __FUNCTION__, tsk_invoke->pid, current->pid);
+	}
+
     up_read(&tsk->mm->mmap_sem);
+
 }
 #endif
 
