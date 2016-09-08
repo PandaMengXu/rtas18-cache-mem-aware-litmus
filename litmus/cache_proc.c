@@ -857,7 +857,7 @@ void flush_cache_for_task(struct task_struct *tsk)
 		dbprintk("%s: switch_mm from %d to %d\n", __FUNCTION__, current->pid, tsk->pid);
 		//rq = cpu_rq(smp_processor_id());
 		//context_switch(rq, current, tsk);
-        switch_mm(current->active_mm, tsk->mm, tsk);
+        switch_mm(tsk_invoke->active_mm, tsk->mm, tsk);
         dbprintk("%s: Should in pid (%d) context now\n", __FUNCTION__, tsk->pid);
 	}
 
@@ -934,7 +934,8 @@ next:
 	{
 		dbprintk("%s: switch_mm from %d back to %d\n", __FUNCTION__, tsk->pid, tsk_invoke->pid);
 		//context_switch(rq, tsk, tsk_invoke);
-        switch_mm(tsk->mm, tsk_invoke->mm, tsk);
+		/* NB: tsk_invoke may be kernel thread */
+        switch_mm(tsk->mm, tsk_invoke->active_mm, tsk);
         dbprintk("%s: Should in pid (%d) context now, current pid is %d\n",
                  __FUNCTION__, tsk_invoke->pid, current->pid);
 	}
