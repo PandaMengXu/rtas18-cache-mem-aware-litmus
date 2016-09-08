@@ -39,6 +39,7 @@
 #include <asm/mmu_context.h>
 
 #define MAX_CPUS   32 
+#define CACHE_LINE_SIZE 	64
 
 /** MX: The value should depend on platform
  *  TODO: make this value configurable */
@@ -93,6 +94,9 @@ unsigned long set_partition_max;
 
 static int show_page_pool = 0;
 static int refill_page_pool = 0;
+
+static int use_wbinvd = 0;
+static uint32_t use_wbinvd_threshold = 0;
 
 static struct mutex void_lockdown_proc;
 
@@ -810,6 +814,71 @@ int flushing_code_handler(struct ctl_table *table, int write,
 	return ret;
 }
 
+int use_wbinvd_handler(struct ctl_table *table, int write,
+        void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = 0, i;
+	unsigned long flags;
+
+    dbprintk("%s: called\n", __FUNCTION__);
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if ( ret )
+		goto out;
+
+	if ( write )
+	{
+		printk("Will use wbinvd to flush task when task wss > %ldMB\n",
+				use_wbinvd_threshold * CACHE_LINE_SIZE / 1024 / 1024);
+	}
+	else
+	{
+		if ( use_wbinvd == 0 )
+			printk("Do NOT use wbinvd to flush cache: wbinvd=%d\n", use_wbinvd);
+		else
+			printk("Using wbinvd to flush task when task wss > %ldMB\n",
+					use_wbinvd_threshold * CACHE_LINE_SIZE / 1024 / 1024);
+	}
+
+out:
+	return ret;
+}
+
+int use_wbinvd_threshold_handler(struct ctl_table *table, int write,
+        void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret = 0, i;
+	unsigned long flags;
+
+    dbprintk("%s: called\n", __FUNCTION__);
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if ( ret )
+		goto out;
+
+	if ( write )
+	{
+		if ( use_wbinvd == 0 )
+		{
+			printk("Must set use_wbinvd before set threshold\n");
+			ret = -EINVAL;
+			goto out;
+		}
+
+		printk("Will use wbinvd to flush task when task wss > %ldMB (use_wbinvd_threshold=%ld)\n",
+				use_wbinvd_threshold * CACHE_LINE_SIZE / 1024 / 1024, use_wbinvd_threshold);
+	}
+	else
+	{
+		if ( use_wbinvd == 0 )
+			printk("Do NOT use wbinvd to flush cache: wbinvd=%d\n", use_wbinvd);
+		else
+			printk("Using wbinvd to flush task when task wss > %ldMB (use_wbinvd_threshold=%ld)\n",
+					use_wbinvd_threshold * CACHE_LINE_SIZE / 1024 / 1024, use_wbinvd_threshold);
+	}
+
+out:
+	return ret;
+}
+
 #if 0
 static void local_clflush(void *vaddr)
 {
@@ -848,6 +917,46 @@ void flush_cache_for_task(struct task_struct *tsk)
     is_flush_code = flushing_code;
     raw_spin_unlock_irqrestore(&flushing_code_lock, flags);
 
+	/* Check if we use wbinvd to flush cache for the task */
+	if ( use_wbinvd )
+	{
+		unsigned long total_lines_to_flush = 0;
+
+    	down_read(&tsk->mm->mmap_sem);
+		vma_itr = tsk->mm->mmap;
+
+		while (vma_itr != NULL) {
+			if ( !(vma_itr->vm_flags & (VM_READ | VM_WRITE)) )
+			{
+				vma_itr = vma_itr->vm_next;
+				continue;
+			}
+			if ( vma_itr->vm_flags & VM_GROWSDOWN )
+			{
+				vma_itr = vma_itr->vm_next;
+				continue;
+			}
+			if ( !is_flush_code && (vma_itr->vm_flags & VM_EXEC) )
+			{
+				vma_itr = vma_itr->vm_next;
+				continue;
+			}
+			total_lines_to_flush += (vma_itr->vm_end - vma_itr->vm_start) / CACHE_LINE_SIZE;
+			vma_itr = vma_itr->vm_next;
+		}
+
+    	up_read(&tsk->mm->mmap_sem);
+
+		if ( total_lines_to_flush > use_wbinvd_threshold )
+		{
+    		TRACE_TASK(tsk, "FLUSH_CACHE_FOR_TASK with wbinvd (total_lines_to_flush=%ld)\n", total_lines_to_flush);
+    		dbprintk("%s: FLUSH_CACHE_FOR_TASK pid:%d with wbinvd (total_lines_to_flush=%ld)\n",
+					 __FUNCTION__, tsk->pid, total_lines_to_flush);
+			wbinvd();
+			return;
+		}
+	}
+
     down_read(&tsk->mm->mmap_sem);
 
 	if ( tsk->pid != current->pid )
@@ -861,8 +970,8 @@ void flush_cache_for_task(struct task_struct *tsk)
         dbprintk("%s: Should in pid (%d) context now\n", __FUNCTION__, tsk->pid);
 	}
 
-    TRACE_TASK(tsk, "FLUSH_CACHE_FOR_TASK\n");
-    dbprintk("%s: FLUSH_CACHE_FOR_TASK pid:%d\n", __FUNCTION__, tsk->pid);
+    TRACE_TASK(tsk, "FLUSH_CACHE_FOR_TASK with clflush\n");
+    dbprintk("%s: FLUSH_CACHE_FOR_TASK pid:%d with clflush\n", __FUNCTION__, tsk->pid);
 	dbprintk("%s: to flush pid (%d) (pgd=%lx) in pid (%d) (pgd=%lx) context\n",
 			 __FUNCTION__, tsk->pid, tsk->mm->pgd->pgd, current->pid, current->mm->pgd->pgd);
 
@@ -1863,6 +1972,22 @@ static struct ctl_table cache_table[] =
         .maxlen     = sizeof(flushing_code),
         .extra1     = &zero,
         .extra2     = &one,
+    },
+    {
+        .procname   = "use_wbinvd",
+        .mode       = 0666,
+        .proc_handler = use_wbinvd_handler,
+        .data       = &use_wbinvd,
+        .maxlen     = sizeof(use_wbinvd),
+        .extra1     = &zero,
+        .extra2     = &one,
+    },
+    {
+        .procname   = "use_wbinvd_threshold",
+        .mode       = 0666,
+        .proc_handler = use_wbinvd_threshold_handler,
+        .data       = &use_wbinvd_threshold,
+        .maxlen     = sizeof(use_wbinvd_threshold),
     },
 #if defined(CONFIG_ARM)
 	{
