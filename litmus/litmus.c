@@ -405,7 +405,7 @@ asmlinkage long sys_set_rt_task_cps(pid_t pid, struct rt_cache __user * param)
  *   find_task_by_vpid() assumes that we are in the same namespace of the
  *   target.
  */
-asmlinkage long sys_get_rt_cache_param(pid_t pid, struct rt_cache __user * param)
+asmlinkage long sys_get_rt_task_cps(pid_t pid, struct rt_cache __user * param)
 {
 	int retval = -EINVAL;
 	struct task_struct *source;
@@ -421,7 +421,7 @@ asmlinkage long sys_get_rt_cache_param(pid_t pid, struct rt_cache __user * param
 	read_unlock(&tasklist_lock);
 	/* Do copying outside the lock */
 	retval =
-	    copy_to_user(param, &lp.set_of_cp_init, sizeof(lp.set_of_cp_init)) ? -EFAULT : 0;
+	    copy_to_user(&param->set_of_cps, &lp.set_of_cp_init, sizeof(lp.set_of_cp_init)) ? -EFAULT : 0;
 	return retval;
       out_unlock:
 	read_unlock(&tasklist_lock);

@@ -29,4 +29,4 @@
 #define __NR_set_rt_task_cps         __LSC(20)
 #define __NR_get_rt_task_cps         __LSC(21)
 
-#define NR_litmus_syscalls 22
+#define NR_litmus_syscalls 24

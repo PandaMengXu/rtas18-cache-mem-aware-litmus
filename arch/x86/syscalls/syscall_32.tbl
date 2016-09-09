@@ -378,3 +378,5 @@
 368	i386	rt_wrmsr	    sys_rt_wrmsr
 369	i386	rt_rdmsr	    sys_rt_rdmsr
 370	i386	rt_wbinvd	    sys_rt_wbinvd
+371	i386	set_rt_task_cps	sys_set_rt_task_cps
+372	i386	get_rt_task_cps	sys_get_rt_task_cps
