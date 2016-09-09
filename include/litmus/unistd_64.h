@@ -45,4 +45,8 @@ __SYSCALL(__NR_rt_wrmsr, sys_rt_wrmsr)
 __SYSCALL(__NR_rt_rdmsr, sys_rt_rdmsr)
 #define __NR_rt_wbinvd               __LSC(19)
 __SYSCALL(__NR_rt_wbinvd, sys_rt_wbinvd)
-#define NR_litmus_syscalls 20
+#define __NR_set_rt_task_cps         __LSC(20)
+__SYSCALL(__NR_set_rt_task_cps, sys_rt_set_rt_task_cps)
+#define __NR_get_rt_task_cps         __LSC(21)
+__SYSCALL(__NR_get_rt_task_cps, sys_rt_get_rt_task_cps)
+#define NR_litmus_syscalls 22

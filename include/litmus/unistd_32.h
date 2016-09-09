@@ -26,5 +26,7 @@
 #define __NR_rt_wrmsr   		    __LSC(17)
 #define __NR_rt_rdmsr	    	    __LSC(18)
 #define __NR_rt_wbinvd	    	    __LSC(19)
+#define __NR_set_rt_task_cps         __LSC(20)
+#define __NR_get_rt_task_cps         __LSC(21)
 
-#define NR_litmus_syscalls 20
+#define NR_litmus_syscalls 22

@@ -276,6 +276,160 @@ asmlinkage long sys_get_rt_task_param(pid_t pid, struct rt_task __user * param)
 }
 
 /*
+ * sys_set_rt_task_cps
+ * @pid: Pid of the task which cache partitions (cps) parameters must be changed
+ * @param: New cps parameters
+ * Syscall for manipulating with task rt extension params
+ * Returns EFAULT  if param is NULL.
+ *         ESRCH   if pid is not corrsponding
+ *	           to a valid task.
+ *	   EINVAL  if either period or execution cost is <=0
+ *	   EPERM   if pid is a real-time task
+ *	   0       if success
+ *
+ * WARNING:
+ * This is the LITMUS design
+ * Only non-real-time tasks may be configured with this system call
+ * to avoid races with the scheduler. In practice, this means that a
+ * task's parameters must be set _before_ calling sys_prepare_rt_task()
+ * We allow a task parameter to be modified in real-time mode.
+ * This may leave the possibility of race condition.
+ *
+ * find_task_by_vpid() assumes that we are in the same namespace of the
+ * target.
+ */
+asmlinkage long sys_set_rt_task_cps(pid_t pid, struct rt_cache __user * param)
+{
+	struct rt_cache newcps;
+	struct task_struct *target;
+	int retval = -EINVAL;
+	int to_flush_task = 0; /* delay the cache flush after irq is unmasked */
+
+	dbprintk("Setting up rt task parameters for process %d.\n", pid);
+
+	if (pid < 0 || param == 0) {
+		goto out;
+	}
+	if (copy_from_user(&newcps, param, sizeof(newcps))) {
+		retval = -EFAULT;
+		goto out;
+	}
+
+	/* Task search and manipulation must be protected */
+	read_lock_irq(&tasklist_lock);
+	if (!(target = find_task_by_vpid(pid))) {
+		retval = -ESRCH;
+		goto out_unlock;
+	}
+
+    /**
+     * Meng: We allow parameter changes when a task has already been real-time task
+     * We do NOT have any protection for the data race on the real-time parameter of
+     * the task.
+     * If the real-time field that is related to the real-time scheduling decision is changed,
+     * it will cause *undefined* behavior for the scheduler behavior!
+     * THIS IS A DIRTY HACK for the paper experiment evaluation to
+     * show dynamic cache management benefit!
+     * We need to be able to change a task cache partition setting when the task is running
+     */
+#if 0
+	if (is_realtime(target)) {
+		/* The task is already a real-time task.
+		 * We cannot not allow parameter changes at this point.
+		 */
+		retval = -EBUSY;
+		goto out_unlock;
+	}
+#endif
+    /* TODO: Change constant to macro */
+    if ( hweight_long(newcps.set_of_cps) < 2 || hweight_long(newcps.set_of_cps) > 20 )
+    {
+        printk(KERN_WARNING "litmus: newcps.set_of_cps (0x%x) must be [2, 20]\n", newcps.set_of_cps);
+		goto out_unlock;
+    }
+
+    if ( newcps.flush == 1 )
+    {
+        dbprintk(KERN_INFO "litmus: scheduler %s\n", litmus->plugin_name);
+        if ( !strcmp(litmus->plugin_name, "GSN-FPCA2") ||
+             !strcmp(litmus->plugin_name, "GSN-NPFPCA") )
+        {
+            if (newcps.set_of_cps != 0)
+            {
+                printk(KERN_ERR "User should never manually set cache partitions for tasks under cache-aware schedulers\n");
+                printk(KERN_ERR "litmus: set_of_cps 0x%x must be 0 for cache-aware schedulers\n",
+                       newcps.set_of_cps);
+                printk(KERN_ERR "litmus: cache-aware schedulers dynamically decide tasks' cache partitions\n");
+                goto out_unlock;
+            }
+            /* flush cache for cache-aware tasks
+             * NB: We cannot flush cache for cache-aware scheduler which may flush cache inside scheduler 
+             * Reason: This function is called with tasklist_lock held, which serializes schedule()
+             *     When cache-aware scheduler is invoked, it will grab tasklist_lock. 
+             *     You have to be VERY CAREFULY about the lock order; otherwise, deadlock occurs
+             *     Since cache-aware scheduler will flush the task's cache before the task is
+             *     scheduled to execute, we do NOT have to take the trouble here! */
+            //flush_cache_for_task(target); /* Think super hard before uncomment this line! */
+            dbprintk(KERN_ERR "litmus: try to flush under cache-aware scheduler\n");
+        } else { /* Non-cache-aware schedulers */
+            /* Configure a specific cache area for a task under non-cache-aware scheduler */
+            if (newcps.set_of_cps != 0)
+            {
+                //flush_cache_for_task(target); /* flush task here will cause fatal page fault. Why?! */
+                to_flush_task = 1;
+                dbprintk(KERN_ERR "litmus: try to flush under non-cache-aware scheduler\n");
+            }
+        }
+    }
+
+	target->rt_param.task_params.set_of_cp_init = newcps.set_of_cps;
+
+	retval = 0;
+      out_unlock:
+	read_unlock_irq(&tasklist_lock);
+      out:
+	if ( to_flush_task == 1 )
+    {
+        _update_cbm_reg(target);
+    	flush_cache_for_task(target);
+    }
+	return retval;
+}
+
+/*
+ * Getter of task's RT cache parameter
+ *   returns EINVAL if param or pid is NULL
+ *   returns ESRCH  if pid does not correspond to a valid task
+ *   returns EFAULT if copying of parameters has failed.
+ *
+ *   find_task_by_vpid() assumes that we are in the same namespace of the
+ *   target.
+ */
+asmlinkage long sys_get_rt_cache_param(pid_t pid, struct rt_cache __user * param)
+{
+	int retval = -EINVAL;
+	struct task_struct *source;
+	struct rt_task lp;
+	if (param == 0 || pid < 0)
+		goto out;
+	read_lock(&tasklist_lock);
+	if (!(source = find_task_by_vpid(pid))) {
+		retval = -ESRCH;
+		goto out_unlock;
+	}
+	lp = source->rt_param.task_params;
+	read_unlock(&tasklist_lock);
+	/* Do copying outside the lock */
+	retval =
+	    copy_to_user(param, &lp.set_of_cp_init, sizeof(lp.set_of_cp_init)) ? -EFAULT : 0;
+	return retval;
+      out_unlock:
+	read_unlock(&tasklist_lock);
+      out:
+	return retval;
+}
+
+/*
  * Getter of RT params of a job
  *   returns EINVAL if param or pid is NULL
  *   returns ESRCH  if pid does not correspond to a valid task
@@ -549,7 +703,7 @@ asmlinkage long sys_rt_wrmsr(int cpu, uint32_t msr, uint64_t val)
 {
     msr_data_t data;
 
-    dbprintk("sys_rt_wrmsr is called cpu=%d msr=0x%08x val=0x%016lx\n", cpu, msr, val);
+    dbprintk("sys_rt_wrmsr is called cpu=%d msr=0x%08x val=0x%016lx\n", cpu, msr, (long long) val);
 
     data.msr = msr;
     data.val = val;

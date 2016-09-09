@@ -108,6 +108,14 @@ typedef enum {
 	((p) >= LITMUS_HIGHEST_PRIORITY &&	\
 	 (p) <= LITMUS_LOWEST_PRIORITY)
 
+/* Real time cache management info. 
+ * Define a new struct for the future extension */
+struct rt_cache {
+	uint32_t	set_of_cps;
+    uint8_t     flush;
+    uint8_t     pad[3];
+};
+
 struct rt_task {
 	lt_t 		exec_cost;
 	lt_t 		period;
