@@ -157,6 +157,35 @@ TRACE_EVENT(litmus_task_completion,
 );
 
 /*
+ * Tracing jobs miss deadline
+ */
+TRACE_EVENT(litmus_task_miss_deadline,
+
+	TP_PROTO(struct task_struct *t, unsigned long miss_deadline),
+
+	TP_ARGS(t, miss_deadline),
+
+	TP_STRUCT__entry(
+		__field( pid_t,		pid	)
+		__field( unsigned int,	job	)
+		__field( lt_t,		tardiness	)
+		__field( unsigned long,	miss_deadline	)
+	),
+
+	TP_fast_assign(
+		__entry->pid	= t ? t->pid : 0;
+		__entry->job	= t ? t->rt_param.job_params.job_no : 0;
+		__entry->tardiness = (long long) litmus_clock() - 
+                        (long long)t->rt_param.job_params.deadline;
+		__entry->miss_deadline	= miss_deadline;
+	),
+
+	TP_printk("deadline miss(job(%u, %u)): %Lu (miss deadline: %lu)\n",
+			__entry->pid, __entry->job,
+			__entry->tardiness, __entry->miss_deadline)
+);
+
+/*
  * Trace blocking tasks.
  */
 TRACE_EVENT(litmus_task_block,

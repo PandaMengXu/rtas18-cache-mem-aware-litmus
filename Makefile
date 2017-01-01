@@ -1,7 +1,7 @@
 VERSION = 3
 PATCHLEVEL = 10
 SUBLEVEL = 31
-EXTRAVERSION = -litmus-rt
+EXTRAVERSION = -litmus-rt-ftrace
 NAME = TOSSUG Baby Fish
 
 # *DOCUMENTATION*

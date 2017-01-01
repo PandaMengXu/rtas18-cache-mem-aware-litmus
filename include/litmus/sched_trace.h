@@ -59,6 +59,13 @@ struct st_completion_data {	/* A job completed. */
 	u8	__unused[7];
 };
 
+struct st_miss_deadline_data {	/* A job miss deadline. */
+	u64	tardiness;
+	u8	miss_deadline:1; 	/* Set to 1 if job miss its deadline. Set 0 otherwise */
+	u8	__uflags:7;     /* unused */
+	u8	__unused[7];
+};
+
 struct st_block_data {		/* A task blocks. */
 	u64	when;
 	u64	__unused;
@@ -94,7 +101,8 @@ typedef enum {
 	ST_BLOCK,
 	ST_RESUME,
 	ST_ACTION,
-	ST_SYS_RELEASE
+	ST_SYS_RELEASE,
+	ST_MISS_DEADLINE
 } st_event_record_type_t;
 
 struct st_event_record {
@@ -109,6 +117,7 @@ struct st_event_record {
 		DATA(switch_to);
 		DATA(switch_away);
 		DATA(completion);
+		DATA(miss_deadline);
 		DATA(block);
 		DATA(resume);
 		DATA(action);
@@ -145,6 +154,9 @@ feather_callback void do_sched_trace_task_switch_away(unsigned long id,
 feather_callback void do_sched_trace_task_completion(unsigned long id,
 						     struct task_struct* task,
 						     unsigned long forced);
+feather_callback void do_sched_trace_task_miss_deadline(unsigned long id,
+						     struct task_struct* task,
+						     unsigned long miss_deadline);
 feather_callback void do_sched_trace_task_block(unsigned long id,
 						struct task_struct* task);
 feather_callback void do_sched_trace_task_resume(unsigned long id,
@@ -176,6 +188,7 @@ feather_callback void do_sched_trace_sys_release(unsigned long id,
 #define trace_litmus_switch_to(t)
 #define trace_litmus_switch_away(prev)
 #define trace_litmus_task_completion(t, forced)
+#define trace_litmus_task_miss_deadline(t, miss_deadline)
 #define trace_litmus_task_block(t)
 #define trace_litmus_task_resume(t)
 #define trace_litmus_sys_release(start)
@@ -250,6 +263,14 @@ feather_callback void do_sched_trace_sys_release(unsigned long id,
 		SCHED_TRACE(SCHED_TRACE_BASE_ID + 10,			\
 			do_sched_trace_sys_release, when);		\
 		trace_litmus_sys_release(when);				\
+	} while (0)
+
+#define sched_trace_task_miss_deadline(t, miss_deadline)		\
+	do {								\
+		SCHED_TRACE2(SCHED_TRACE_BASE_ID + 11,			\
+				do_sched_trace_task_miss_deadline, t,	\
+				(unsigned long) miss_deadline);		\
+		trace_litmus_task_miss_deadline(t, miss_deadline);		\
 	} while (0)
 
 #define sched_trace_quantum_boundary() /* NOT IMPLEMENTED */

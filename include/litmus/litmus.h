@@ -11,6 +11,7 @@
 #ifdef CONFIG_RELEASE_MASTER
 extern atomic_t release_master_cpu;
 #endif
+extern atomic_t ftrace_sched_only_record_ddl_miss;
 
 #ifdef CONFIG_LITMUS_DEBUG_DEBUG
 #define dbprintk(format, args...)   printk(KERN_WARNING format, ##args)

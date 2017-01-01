@@ -24,6 +24,7 @@ static struct proc_dir_entry *litmus_dir = NULL,
 #ifdef CONFIG_RELEASE_MASTER
 	*release_master_file = NULL,
 #endif
+	*feather_trace_file = NULL,
 	*plugs_file = NULL,
 	*domains_dir = NULL,
 	*cpus_dir = NULL;
@@ -47,7 +48,7 @@ static int litmus_stats_proc_show(struct seq_file *m, void *v)
 		"rt=0x%x, task=0x%x\n",
 	   	atomic_read(&rt_task_count),
 	   	count_tasks_waiting_for_release(),
-		(void *) rt, (void *) task);
+		(long *) rt, (long *) task);
 		return 0;
 	}
 
@@ -222,6 +223,63 @@ static const struct file_operations litmus_release_master_proc_fops = {
 };
 #endif
 
+/* feather trace proc */
+static ssize_t litmus_feather_trace_proc_write(
+	struct file *file,
+	const char __user *buffer, size_t count,
+	loff_t *ppos)
+{
+	int cpu, err, online = 0;
+	char msg[64];
+	ssize_t len;
+
+	len = copy_and_chomp(msg, sizeof(msg), buffer, count);
+
+	if (len < 0)
+		return len;
+
+    if (strcmp(msg, "1") == 0)
+    {
+		atomic_set(&ftrace_sched_only_record_ddl_miss, 1);
+        printk("Feather Trace will only record for deadline miss\n");
+    } 
+    else if (strcmp(msg, "0") == 0)
+    {
+		atomic_set(&ftrace_sched_only_record_ddl_miss, 0);
+        printk("Feather Trace will record all events\n");
+    }
+    else
+    {
+        printk("Invalid value: ftrace_sched_only_record_ddl_miss valid value is 0 1. ");
+    }
+
+	return len;
+}
+
+static int litmus_feather_trace_proc_show(struct seq_file *m, void *v)
+{
+	int only_record_ddl;
+	only_record_ddl = atomic_read(&ftrace_sched_only_record_ddl_miss);
+	if (only_record_ddl)
+		seq_printf(m, "Feather trace only record events when deadline happens\n");
+	else
+		seq_printf(m, "Feather trace will record all events until buffer is full\n");
+	return 0;
+}
+
+static int litmus_feather_trace_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, litmus_feather_trace_proc_show, PDE_DATA(inode));
+}
+
+static const struct file_operations litmus_feather_trace_proc_fops = {
+	.open		= litmus_feather_trace_proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+	.write		= litmus_feather_trace_proc_write,
+};
+
 int __init init_litmus_proc(void)
 {
 	litmus_dir = proc_mkdir("litmus", NULL);
@@ -248,6 +306,14 @@ int __init init_litmus_proc(void)
 		return -ENOMEM;
 	}
 #endif
+
+	feather_trace_file = proc_create("feather_trace", 0644, litmus_dir,
+					  &litmus_feather_trace_proc_fops);
+	if (!feather_trace_file) {
+		printk(KERN_ERR "Could not allocate feather_trace "
+		       "procfs entry.\n");
+		return -ENOMEM;
+	}
 
 	stat_file = proc_create("stats", 0444, litmus_dir, &litmus_stats_proc_fops);
 
@@ -299,6 +365,8 @@ void exit_litmus_proc(void)
 	if (release_master_file)
 		remove_proc_entry("release_master", litmus_dir);
 #endif
+	if (feather_trace_file)
+		remove_proc_entry("feather_trace", litmus_dir);
 	if (litmus_dir)
 		remove_proc_entry("litmus", NULL);
 }

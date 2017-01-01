@@ -101,6 +101,28 @@ static inline struct st_event_record* get_record(u8 type, struct task_struct* t)
 	return rec;
 }
 
+/* Is task missing deadline? */
+static inline int task_miss_deadline(struct task_struct *t)
+{
+    if ( (long long)litmus_clock() -
+		 (long long)t->rt_param.job_params.deadline > 0)
+        return 1;
+    else
+        return 0;
+}
+
+static inline int will_put_record(struct task_struct *t)
+{
+    int only_record_ddl_miss;
+
+    only_record_ddl_miss = atomic_read(&ftrace_sched_only_record_ddl_miss);
+    if (only_record_ddl_miss == 1 &&
+        task_miss_deadline(t) == 1)
+        return 1;
+    else
+        return 0;
+}
+
 static inline void put_record(struct st_event_record* rec)
 {
 	struct local_buffer* buf;
@@ -112,8 +134,13 @@ static inline void put_record(struct st_event_record* rec)
 feather_callback void do_sched_trace_task_name(unsigned long id, unsigned long _task)
 {
 	struct task_struct *t = (struct task_struct*) _task;
-	struct st_event_record* rec = get_record(ST_NAME, t);
+	struct st_event_record* rec = NULL;
 	int i;
+
+    if (!will_put_record(t))
+        return;
+
+	rec = get_record(ST_NAME, t);
 	if (rec) {
 		for (i = 0; i < min(TASK_COMM_LEN, ST_NAME_LEN); i++)
 			rec->data.name.cmd[i] = t->comm[i];
@@ -124,7 +151,12 @@ feather_callback void do_sched_trace_task_name(unsigned long id, unsigned long _
 feather_callback void do_sched_trace_task_param(unsigned long id, unsigned long _task)
 {
 	struct task_struct *t = (struct task_struct*) _task;
-	struct st_event_record* rec = get_record(ST_PARAM, t);
+	struct st_event_record* rec = NULL;
+
+    if (!will_put_record(t))
+        return;
+
+	rec = get_record(ST_PARAM, t);
 	if (rec) {
 		rec->data.param.wcet      = get_exec_cost(t);
 		rec->data.param.period    = get_rt_period(t);
@@ -138,7 +170,12 @@ feather_callback void do_sched_trace_task_param(unsigned long id, unsigned long 
 feather_callback void do_sched_trace_task_release(unsigned long id, unsigned long _task)
 {
 	struct task_struct *t = (struct task_struct*) _task;
-	struct st_event_record* rec = get_record(ST_RELEASE, t);
+	struct st_event_record* rec = NULL;
+
+    if (!will_put_record(t))
+        return;
+
+    rec = get_record(ST_RELEASE, t);
 	if (rec) {
 		rec->data.release.release  = get_release(t);
 		rec->data.release.deadline = get_deadline(t);
@@ -154,6 +191,9 @@ feather_callback void do_sched_trace_task_switch_to(unsigned long id,
 	struct task_struct *t = (struct task_struct*) _task;
 	struct st_event_record* rec;
 	if (is_realtime(t)) {
+        if (!will_put_record(t))
+            return;
+
 		rec = get_record(ST_SWITCH_TO, t);
 		if (rec) {
 			rec->data.switch_to.when      = now();
@@ -169,6 +209,9 @@ feather_callback void do_sched_trace_task_switch_away(unsigned long id,
 	struct task_struct *t = (struct task_struct*) _task;
 	struct st_event_record* rec;
 	if (is_realtime(t)) {
+        if (!will_put_record(t))
+            return;
+        
 		rec = get_record(ST_SWITCH_AWAY, t);
 		if (rec) {
 			rec->data.switch_away.when      = now();
@@ -183,10 +226,35 @@ feather_callback void do_sched_trace_task_completion(unsigned long id,
 						     unsigned long forced)
 {
 	struct task_struct *t = (struct task_struct*) _task;
-	struct st_event_record* rec = get_record(ST_COMPLETION, t);
+	struct st_event_record* rec = NULL;
+
+    if (!will_put_record(t))
+        return;
+
+    rec =  get_record(ST_COMPLETION, t);
 	if (rec) {
 		rec->data.completion.when   = now();
 		rec->data.completion.forced = forced;
+		put_record(rec);
+	}
+}
+
+feather_callback void do_sched_trace_task_miss_deadline(unsigned long id,
+						     unsigned long _task,
+						     unsigned long miss_deadline)
+{
+	struct task_struct *t = (struct task_struct*) _task;
+	struct st_event_record* rec = NULL;
+
+    if (!will_put_record(t))
+        return;
+
+    rec =  get_record(ST_MISS_DEADLINE, t);
+	if (rec) {
+		rec->data.miss_deadline.tardiness   =
+		                (long long)litmus_clock() -
+		                (long long)t->rt_param.job_params.deadline;
+		rec->data.miss_deadline.miss_deadline = miss_deadline;
 		put_record(rec);
 	}
 }
@@ -195,7 +263,12 @@ feather_callback void do_sched_trace_task_block(unsigned long id,
 						unsigned long _task)
 {
 	struct task_struct *t = (struct task_struct*) _task;
-	struct st_event_record* rec = get_record(ST_BLOCK, t);
+	struct st_event_record* rec = NULL;
+
+    if (!will_put_record(t))
+        return;
+
+    rec = get_record(ST_BLOCK, t);
 	if (rec) {
 		rec->data.block.when      = now();
 		put_record(rec);
@@ -206,7 +279,12 @@ feather_callback void do_sched_trace_task_resume(unsigned long id,
 						 unsigned long _task)
 {
 	struct task_struct *t = (struct task_struct*) _task;
-	struct st_event_record* rec = get_record(ST_RESUME, t);
+	struct st_event_record* rec = NULL;
+
+    if (!will_put_record(t))
+        return;
+
+    rec = get_record(ST_RESUME, t);
 	if (rec) {
 		rec->data.resume.when      = now();
 		put_record(rec);
@@ -217,7 +295,9 @@ feather_callback void do_sched_trace_sys_release(unsigned long id,
 						 unsigned long _start)
 {
 	lt_t *start = (lt_t*) _start;
-	struct st_event_record* rec = get_record(ST_SYS_RELEASE, NULL);
+	struct st_event_record* rec = NULL;
+
+    rec = get_record(ST_SYS_RELEASE, NULL);
 	if (rec) {
 		rec->data.sys_release.when    = now();
 		rec->data.sys_release.release = *start;
@@ -230,7 +310,12 @@ feather_callback void do_sched_trace_action(unsigned long id,
 					    unsigned long action)
 {
 	struct task_struct *t = (struct task_struct*) _task;
-	struct st_event_record* rec = get_record(ST_ACTION, t);
+	struct st_event_record* rec = NULL;
+
+    if (!will_put_record(t))
+        return;
+
+    rec = get_record(ST_ACTION, t);
 
 	if (rec) {
 		rec->data.action.when   = now();

@@ -159,7 +159,13 @@ static int psnedf_check_resched(rt_domain_t *edf)
 
 static void job_completion(struct task_struct* t, int forced)
 {
+    int miss_deadline = 0;
+
+    if ((long long)litmus_clock() - (long long)t->rt_param.job_params.deadline > 0)
+        miss_deadline = 1;
+
 	sched_trace_task_completion(t,forced);
+	sched_trace_task_miss_deadline(t,miss_deadline);
 	TRACE_TASK(t, "job_completion().\n");
 
 	tsk_rt(t)->completed = 0;

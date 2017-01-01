@@ -47,6 +47,7 @@ spinlock_t cos_lock[MSR_IA32_COS_REG_NUM];
 /* current master CPU for handling timer IRQs */
 atomic_t release_master_cpu = ATOMIC_INIT(NO_CPU);
 #endif
+atomic_t ftrace_sched_only_record_ddl_miss = ATOMIC_INIT(0);
 
 static struct kmem_cache * bheap_node_cache;
 extern struct kmem_cache * release_heap_cache;
