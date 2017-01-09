@@ -160,12 +160,25 @@ static int psnedf_check_resched(rt_domain_t *edf)
 static void job_completion(struct task_struct* t, int forced)
 {
     int miss_deadline = 0;
+    int only_record_ddl_miss;
+
+    only_record_ddl_miss = atomic_read(&ftrace_sched_only_record_ddl_miss);
 
     if ((long long)litmus_clock() - (long long)t->rt_param.job_params.deadline > 0)
         miss_deadline = 1;
 
-	sched_trace_task_completion(t,forced);
-	sched_trace_task_miss_deadline(t,miss_deadline);
+    if (only_record_ddl_miss == 1 && miss_deadline == 1)
+    {
+	    sched_trace_task_completion(t,forced);
+	    sched_trace_task_miss_deadline(t,forced);
+		sched_trace_task_param(t);
+    }
+    if (only_record_ddl_miss == 0)
+    {
+	    sched_trace_task_completion(t,forced);
+        if (miss_deadline == 1)
+	        sched_trace_task_miss_deadline(t,forced);
+    }
 	TRACE_TASK(t, "job_completion().\n");
 
 	tsk_rt(t)->completed = 0;

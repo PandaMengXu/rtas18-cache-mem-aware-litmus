@@ -61,9 +61,8 @@ struct st_completion_data {	/* A job completed. */
 
 struct st_miss_deadline_data {	/* A job miss deadline. */
 	u64	tardiness;
-	u8	miss_deadline:1; 	/* Set to 1 if job miss its deadline. Set 0 otherwise */
-	u8	__uflags:7;     /* unused */
-	u8	__unused[7];
+	u64	forced:1; 	/* Set to 1 if job miss its deadline. Set 0 otherwise */
+    u64 exec_time:63;
 };
 
 struct st_block_data {		/* A task blocks. */
@@ -265,12 +264,12 @@ feather_callback void do_sched_trace_sys_release(unsigned long id,
 		trace_litmus_sys_release(when);				\
 	} while (0)
 
-#define sched_trace_task_miss_deadline(t, miss_deadline)		\
+#define sched_trace_task_miss_deadline(t, forced)		\
 	do {								\
 		SCHED_TRACE2(SCHED_TRACE_BASE_ID + 11,			\
 				do_sched_trace_task_miss_deadline, t,	\
-				(unsigned long) miss_deadline);		\
-		trace_litmus_task_miss_deadline(t, miss_deadline);		\
+				(unsigned long) forced);		\
+		trace_litmus_task_miss_deadline(t, forced);		\
 	} while (0)
 
 #define sched_trace_quantum_boundary() /* NOT IMPLEMENTED */

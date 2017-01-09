@@ -161,15 +161,15 @@ TRACE_EVENT(litmus_task_completion,
  */
 TRACE_EVENT(litmus_task_miss_deadline,
 
-	TP_PROTO(struct task_struct *t, unsigned long miss_deadline),
+	TP_PROTO(struct task_struct *t, unsigned long forced),
 
-	TP_ARGS(t, miss_deadline),
+	TP_ARGS(t, forced),
 
 	TP_STRUCT__entry(
 		__field( pid_t,		pid	)
 		__field( unsigned int,	job	)
 		__field( lt_t,		tardiness	)
-		__field( unsigned long,	miss_deadline	)
+		__field( unsigned long,	forced	)
 	),
 
 	TP_fast_assign(
@@ -177,12 +177,13 @@ TRACE_EVENT(litmus_task_miss_deadline,
 		__entry->job	= t ? t->rt_param.job_params.job_no : 0;
 		__entry->tardiness = (long long) litmus_clock() - 
                         (long long)t->rt_param.job_params.deadline;
-		__entry->miss_deadline	= miss_deadline;
+		__entry->forced	= forced;
+		//__entry->exec_time	= (long long)t->rt_param.job_params.exec_time;
 	),
 
 	TP_printk("deadline miss(job(%u, %u)): %Lu (miss deadline: %lu)\n",
 			__entry->pid, __entry->job,
-			__entry->tardiness, __entry->miss_deadline)
+			__entry->tardiness, __entry->forced)
 );
 
 /*
