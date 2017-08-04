@@ -1,0 +1,7 @@
+branch rtas17-vcat-shepherd-v1 is used for RTAS17 vcat paper
+branch rtas17-vcat-shepherd-v1 is based on branch meng/ecrts2016/two-level-ca-sched-v4.7-dynamic-management-with-wbinvd-ftrace
+
+---
+We will develop memory bandwidth partitioning mechanism for RT-Xen in branches rtas18-cache-mem-rtxen-vX, where X is the version number.
+rtas18-cache-mem-rtxen-vX branches are checked out from the rtas17-vcat-shepherd-v1 branch
+
