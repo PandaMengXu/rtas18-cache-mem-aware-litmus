@@ -170,4 +170,24 @@ struct vcpu_register_vcpu_info {
 };
 DEFINE_GUEST_HANDLE_STRUCT(vcpu_register_vcpu_info);
 
+/*
+ * Return information about the real-time sched status of a VCPU
+ * @extra_arg == pointer to vcpu_rt_info structure
+ */
+/*
+typedef signed long s64;
+typedef s64 s_time_t;
+#define PRI_stime PRId64
+*/
+#define VCPUOP_get_rt_info     14
+struct vcpu_rt_info {
+    /* VCPU's scheduler ID */
+    int sched_id;
+    signed long period;     /* s_time_t is s64 in Xen */
+    signed long budget;
+    signed long cur_budget; /* current remaing budget */
+};
+typedef struct vcpu_rt_info vcpu_rt_info_t;
+DEFINE_GUEST_HANDLE_STRUCT(vcpu_rt_info);
+
 #endif /* __XEN_PUBLIC_VCPU_H__ */

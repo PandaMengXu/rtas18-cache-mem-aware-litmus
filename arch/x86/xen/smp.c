@@ -200,6 +200,24 @@ static void __init xen_fill_possible_map(void)
 	}
 }
 
+/**
+ * Get the vcpu_rt_info of the vcpu vcpu_id
+ * Expose this function in symbol table so that
+ * we can call it in modules
+ */
+asmlinkage void
+xen_get_rt_info(int vcpu_id, struct vcpu_rt_info *rtinfo)
+{
+    int ret;
+    ret = HYPERVISOR_vcpu_op(VCPUOP_get_rt_info, vcpu_id, rtinfo);
+    if ( ret )
+    {
+        printk(KERN_ERR "RTXEN:%s:vcpu:%d hypercall error (%d)\n",
+               __FUNCTION__, vcpu_id, ret);
+    }
+}
+EXPORT_SYMBOL(xen_get_rt_info);
+
 static void __init xen_filter_cpu_maps(void)
 {
 	int i, rc;
